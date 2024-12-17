@@ -1,0 +1,20 @@
+[project]
+name = "mcp-salesforce"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.1.2",
+    "python-dotenv>=1.0.1",
+    "simple-salesforce>=1.12.6",
+]
+[build-system]
+requires = [ "hatchling",]
+build-backend = "hatchling.build"
+
+[project.scripts]
+salesforce = "src.salesforce:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
