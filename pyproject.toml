@@ -10,7 +10,7 @@ dependencies = [
     "simple-salesforce>=1.12.6",
 ]
 [build-system]
-requires = [ "hatchling",]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]

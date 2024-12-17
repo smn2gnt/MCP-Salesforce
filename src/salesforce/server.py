@@ -103,18 +103,24 @@ async def handle_read_resource(uri: str) -> types.ResourceContents:
 # Add tool capabilities to run SOQL queries
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
+    """
+    List available tools.
+    Each tool specifies its arguments using JSON Schema validation.
+    """
     return [
         types.Tool(
             name="run_soql_query",
             description="Executes a SOQL query against Salesforce",
-            arguments=[
-                types.ToolArgument(
-                    name="query",
-                    description="The SOQL query to execute",
-                    type="string",
-                    required=True,
-                )
-            ],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The SOQL query to execute",
+                    },
+                },
+                "required": ["query"],
+            },
         )
     ]
 
