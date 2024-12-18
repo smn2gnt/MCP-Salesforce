@@ -1,17 +1,19 @@
-[project]
-name = "mcp-salesforce"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "mcp>=1.1.2",
-    "python-dotenv>=1.0.1",
-    "simple-salesforce>=1.12.6",
-]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[project]
+name = "mcp-salesforce-connector"
+version = "0.1.0"
+description = "A Model Context Protocol (MCP) server implementation for Salesforce integration"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "Suman G", email = "suman.gunaganti@gmail.com" },
+]
+
+[project.urls]
+Homepage = "https://github.com/smn2gnt/MCP-Salesforce"
 
 [project.scripts]
 salesforce = "src.salesforce:main"
