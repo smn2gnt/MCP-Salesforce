@@ -8,5 +8,29 @@ A Model Context Protocol (MCP) server implementation for Salesforce integration,
 - Perform SOSL (Salesforce Object Search Language) searches
 
 
+## Configuration
+### Model Context Protocol
 
+To use this server with the Model Context Protocol, you need to configure it in your `claude_desktop_config.json` file. Add the following entry to the `mcpServers` section:
+
+
+    {
+        "mcpServers": {
+            "salesforce": {
+            "command": "uvx",
+            "args": [
+                "--from",
+                "mcp-salesforce-connector",
+                "salesforce"
+            ],
+            "env": {
+                "SALESFORCE_USERNAME": "YOUR_SALESFORCE_USERNAME",
+                "SALESFORCE_PASSWORD": "YOUR_SALESFORCE_PASSWORD",
+                "SALESFORCE_SECURITY_TOKEN": "YOUR_SALESFORCE_SECURITY_TOKEN"
+                }
+            }
+        }
+    }
+    
+Replace `YOUR_SALESFORCE_USERNAME`, `YOUR_SALESFORCE_PASSWORD`, and `YOUR_SALESFORCE_SECURITY_TOKEN` with your Salesforce credentials.
 

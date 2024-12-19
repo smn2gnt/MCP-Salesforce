@@ -38,9 +38,6 @@ class SalesforceClient:
                 password=os.getenv('SALESFORCE_PASSWORD'),
                 security_token=os.getenv('SALESFORCE_SECURITY_TOKEN')
             )
-            mdapi = self.sf.mdapi
-            custom_object = mdapi.CustomObject.read("Account")
-            print(custom_object)
             return True
         except Exception as e:
             print(f"Salesforce connection failed: {str(e)}")
