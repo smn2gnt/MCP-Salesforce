@@ -6,6 +6,11 @@ A Model Context Protocol (MCP) server implementation for Salesforce integration,
 
 - Execute SOQL (Salesforce Object Query Language) queries
 - Perform SOSL (Salesforce Object Search Language) searches
+- Retrieve metadata for Salesforce objects, including field names, labels, and types
+- Retrieve, create, update, and delete records
+- Execute Tooling API requests
+- Execute Apex REST requests
+- Make direct REST API calls to Salesforce
 
 
 ## Configuration
