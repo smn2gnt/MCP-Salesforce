@@ -42,46 +42,34 @@ class SalesforceClient:
         except Exception as e:
             print(f"Salesforce connection failed: {str(e)}")
             return False
+    
+    async def get_object_fields(self, object_name: str) -> str:
+        """Retrieves field Names, labels and typesfor a specific Salesforce object.
 
-    def run_soql_query(self, query: str) -> list[dict[str, Any]]:
-        """Executes a SOQL query and returns the results.
-        
         Args:
-            query: The SOQL query string to execute
-            
+            object_name (str): The name of the Salesforce object.
+
         Returns:
-            List of records as dictionaries
+            str: JSON representation of the object fields.
         """
         if not self.sf:
-            print("Error: Salesforce connection not established")
-            return []
+            raise ValueError("Salesforce connection not established.")
+        if object_name not in self.sobjects_cache:
+            sf_object = getattr(self.sf, object_name)
+            fields = sf_object.describe()['fields']
+            filtered_fields = []
+            for field in fields:
+                filtered_fields.append({
+                    'label': field['label'],
+                    'name': field['name'],
+                    'updateable': field['updateable'],
+                    'type': field['type'],
+                    'length': field['length'],
+                    'picklistValues': field['picklistValues']
+                })
+            self.sobjects_cache[object_name] = filtered_fields
             
-        try:
-            result = self.sf.query_all(query)
-            return result["records"]
-        except SalesforceError as e:
-            print(f"Error executing SOQL query: {e}")
-            return []
-
-    def run_sosl_search(self, search_query: str) -> list[dict[str, Any]]:
-        """Executes a SOSL search and returns the results.
-        
-        Args:
-            search_query: The SOSL search string to execute
-            
-        Returns:
-            List of records as dictionaries
-        """
-        if not self.sf:
-            print("Error: Salesforce connection not established")
-            return []
-            
-        try:
-            result = self.sf.search(search_query)
-            return result["searchRecords"] if "searchRecords" in result else []
-        except SalesforceError as e:
-            print(f"Error executing SOSL search: {e}")
-            return []
+        return json.dumps(self.sobjects_cache[object_name], indent=2)
 
 # Create a server instance
 server = Server("salesforce-mcp")
@@ -131,7 +119,185 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["search"],
             },
-        )
+        ),
+        types.Tool(
+            name="get_object_fields",
+            description="Retrieves field Names, labels and types for a specific Salesforce object",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The name of the Salesforce object (e.g., 'Account', 'Contact')",
+                    },
+                },
+                "required": ["object_name"],
+            },
+        ),
+        types.Tool(
+            name="get_record",
+            description="Retrieves a specific record by ID",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The name of the Salesforce object (e.g., 'Account', 'Contact')",
+                    },
+                    "record_id": {
+                        "type": "string",
+                        "description": "The ID of the record to retrieve",
+                    },
+                },
+                "required": ["object_name", "record_id"],
+            },
+        ),
+        types.Tool(
+            name="create_record",
+            description="Creates a new record",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The name of the Salesforce object (e.g., 'Account', 'Contact')",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "The data for the new record",
+                        "properties": {},
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["object_name", "data"],
+            },
+        ),
+        types.Tool(
+            name="update_record",
+            description="Updates an existing record",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The name of the Salesforce object (e.g., 'Account', 'Contact')",
+                    },
+                    "record_id": {
+                        "type": "string",
+                        "description": "The ID of the record to update",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "The updated data for the record",
+                        "properties": {},
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["object_name", "record_id", "data"],
+            },
+        ),
+        types.Tool(
+            name="delete_record",
+            description="Deletes a record",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The name of the Salesforce object (e.g., 'Account', 'Contact')",
+                    },
+                    "record_id": {
+                        "type": "string",
+                        "description": "The ID of the record to delete",
+                    },
+                },
+                "required": ["object_name", "record_id"],
+            },
+        ),
+        types.Tool(
+            name="tooling_execute",
+            description="Executes a Tooling API request",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": "The Tooling API endpoint to call (e.g., 'sobjects/ApexClass')",
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": "The HTTP method (default: 'GET')",
+                        "enum": ["GET", "POST", "PATCH", "DELETE"],
+                        "default": "GET",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Data for POST/PATCH requests",
+                        "properties": {},
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["action"],
+            },
+        ),
+        types.Tool(
+            name="apex_execute",
+            description="Executes an Apex REST request",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": "The Apex REST endpoint to call (e.g., '/MyApexClass')",
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": "The HTTP method (default: 'GET')",
+                        "enum": ["GET", "POST", "PATCH", "DELETE"],
+                        "default": "GET",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Data for POST/PATCH requests",
+                        "properties": {},
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["action"],
+            },
+        ),
+        types.Tool(
+            name="restful",
+            description="Makes a direct REST API call to Salesforce",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The path of the REST API endpoint (e.g., 'sobjects/Account/describe')",
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": "The HTTP method (default: 'GET')",
+                        "enum": ["GET", "POST", "PATCH", "DELETE"],
+                        "default": "GET",
+                    },
+                    "params": {
+                        "type": "object",
+                        "description": "Query parameters for the request",
+                        "properties": {},
+                        "additionalProperties": True,
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Data for POST/PATCH requests",
+                        "properties": {},
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["path"],
+            },
+        ),
     ]
 
 @server.call_tool()
@@ -141,7 +307,7 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         if not query:
             raise ValueError("Missing 'query' argument")
 
-        results = sf_client.run_soql_query(query)
+        results = sf_client.sf.query_all(query)
         return [
             types.TextContent(
                 type="text",
@@ -153,11 +319,138 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         if not search:
             raise ValueError("Missing 'search' argument")
 
-        results = sf_client.run_sosl_search(search)
+        results = sf_client.sf.search(search)
         return [
             types.TextContent(
                 type="text",
                 text=f"SOSL Search Results (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+    elif name == "get_object_fields":
+        object_name = arguments.get("object_name")
+        if not object_name:
+            raise ValueError("Missing 'object_name' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        results = await sf_client.get_object_fields(object_name)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"{object_name} Metadata (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+    elif name == "get_record":
+        object_name = arguments.get("object_name")
+        record_id = arguments.get("record_id")
+        if not object_name or not record_id:
+            raise ValueError("Missing 'object_name' or 'record_id' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        sf_object = getattr(sf_client.sf, object_name)
+        results = sf_object.get(record_id)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"{object_name} Record (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+    elif name == "create_record":
+        object_name = arguments.get("object_name")
+        data = arguments.get("data")
+        if not object_name or not data:
+            raise ValueError("Missing 'object_name' or 'data' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        sf_object = getattr(sf_client.sf, object_name)
+        results = sf_object.create(data)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Create {object_name} Record Result (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+    elif name == "update_record":
+        object_name = arguments.get("object_name")
+        record_id = arguments.get("record_id")
+        data = arguments.get("data")
+        if not object_name or not record_id or not data:
+            raise ValueError("Missing 'object_name', 'record_id', or 'data' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        sf_object = getattr(sf_client.sf, object_name)
+        results = sf_object.update(record_id, data)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Update {object_name} Record Result: {results}",
+            )
+        ]
+    elif name == "delete_record":
+        object_name = arguments.get("object_name")
+        record_id = arguments.get("record_id")
+        if not object_name or not record_id:
+            raise ValueError("Missing 'object_name' or 'record_id' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        sf_object = getattr(sf_client.sf, object_name)
+        results = sf_object.delete(record_id)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Delete {object_name} Record Result: {results}",
+            )
+        ]
+    elif name == "tooling_execute":
+        action = arguments.get("action")
+        method = arguments.get("method", "GET")
+        data = arguments.get("data")
+
+        if not action:
+            raise ValueError("Missing 'action' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+
+        results = sf_client.sf.toolingexecute(action, method=method, data=data)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Tooling Execute Result (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+
+    elif name == "apex_execute":
+        action = arguments.get("action")
+        method = arguments.get("method", "GET")
+        data = arguments.get("data")
+
+        if not action:
+            raise ValueError("Missing 'action' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+
+        results = sf_client.sf.apexecute(action, method=method, data=data)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Apex Execute Result (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+    elif name == "restful":
+        path = arguments.get("path")
+        method = arguments.get("method", "GET")
+        params = arguments.get("params")
+        data = arguments.get("data")
+
+        if not path:
+            raise ValueError("Missing 'path' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+
+        results = sf_client.sf.restful(path, method=method, params=params, json=data)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"RESTful API Call Result (JSON):\n{json.dumps(results, indent=2)}",
             )
         ]
     raise ValueError(f"Unknown tool: {name}")
