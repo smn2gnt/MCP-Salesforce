@@ -43,7 +43,7 @@ class SalesforceClient:
             print(f"Salesforce connection failed: {str(e)}")
             return False
     
-    async def get_object_fields(self, object_name: str) -> str:
+    def get_object_fields(self, object_name: str) -> str:
         """Retrieves field Names, labels and typesfor a specific Salesforce object.
 
         Args:
@@ -332,11 +332,11 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
             raise ValueError("Missing 'object_name' argument")
         if not sf_client.sf:
             raise ValueError("Salesforce connection not established.")
-        results = await sf_client.get_object_fields(object_name)
+        results = sf_client.get_object_fields(object_name)
         return [
             types.TextContent(
                 type="text",
-                text=f"{object_name} Metadata (JSON):\n{json.dumps(results, indent=2)}",
+                text=f"{object_name} Metadata (JSON):\n{results}",
             )
         ]
     elif name == "get_record":
