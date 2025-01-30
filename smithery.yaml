@@ -1,0 +1,25 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - salesforceUsername
+      - salesforcePassword
+      - salesforceSecurityToken
+    properties:
+      salesforceUsername:
+        type: string
+        description: The username for the Salesforce account.
+      salesforcePassword:
+        type: string
+        description: The password for the Salesforce account.
+      salesforceSecurityToken:
+        type: string
+        description: The security token for the Salesforce account.
+  commandFunction:
+    # A function that produces the CLI command to start the MCP on stdio.
+    |-
+    (config) => ({command: 'salesforce', env: {SALESFORCE_USERNAME: config.salesforceUsername, SALESFORCE_PASSWORD: config.salesforcePassword, SALESFORCE_SECURITY_TOKEN: config.salesforceSecurityToken}})
