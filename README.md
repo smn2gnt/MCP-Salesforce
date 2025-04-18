@@ -29,13 +29,12 @@ To use this server with the Model Context Protocol, you need to configure it in 
                 "salesforce"
             ],
             "env": {
-                "SALESFORCE_USERNAME": "YOUR_SALESFORCE_USERNAME",
-                "SALESFORCE_PASSWORD": "YOUR_SALESFORCE_PASSWORD",
-                "SALESFORCE_SECURITY_TOKEN": "YOUR_SALESFORCE_SECURITY_TOKEN"
+                "SALESFORCE_ACCESS_TOKEN": "SALESFORCE_ACCESS_TOKEN",
+                "SALESFORCE_INSTANCE_URL": "SALESFORCE_INSTANCE_URL",
                 }
             }
         }
     }
     
-Replace `YOUR_SALESFORCE_USERNAME`, `YOUR_SALESFORCE_PASSWORD`, and `YOUR_SALESFORCE_SECURITY_TOKEN` with your Salesforce credentials.
+Replace `SALESFORCE_ACCESS_TOKEN`, `SALESFORCE_INSTANCE_URL` with your oAuth Salesforce credentials.
 
