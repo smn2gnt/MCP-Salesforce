@@ -39,3 +39,8 @@ To use this server with the Model Context Protocol, you need to configure it in 
     
 Replace `YOUR_SALESFORCE_USERNAME`, `YOUR_SALESFORCE_PASSWORD`, and `YOUR_SALESFORCE_SECURITY_TOKEN` with your Salesforce credentials.
 
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=smn2gnt/MCP-Salesforce&type=Date)](https://www.star-history.com/#smn2gnt/MCP-Salesforce&Date)
+
