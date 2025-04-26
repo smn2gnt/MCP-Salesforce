@@ -1,5 +1,7 @@
 # MCP Salesforce Connector
 
+[![smithery badge](https://smithery.ai/badge/mcp-salesforce-connector)](https://smithery.ai/server/mcp-salesforce-connector)
+
 A Model Context Protocol (MCP) server implementation for Salesforce integration, allowing LLMs to interact with Salesforce data through SOQL queries and SOSL searches.
 
 ## Features
@@ -12,6 +14,15 @@ A Model Context Protocol (MCP) server implementation for Salesforce integration,
 - Execute Apex REST requests
 - Make direct REST API calls to Salesforce
 
+## Installation
+
+### Installing via Smithery
+
+To install Salesforce for Claude Desktop automatically via [Smithery](https://smithery.ai/server/mcp-salesforce-connector):
+
+```bash
+npx -y @smithery/cli install mcp-salesforce-connector --client claude
+```
 
 ## Configuration
 ### Model Context Protocol
