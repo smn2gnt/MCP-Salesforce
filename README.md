@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/smn2gnt-mcp-salesforce-badge.png)](https://mseep.ai/app/smn2gnt-mcp-salesforce)
+
 # MCP Salesforce Connector
 
 A Model Context Protocol (MCP) server implementation for Salesforce integration, allowing LLMs to interact with Salesforce data through SOQL queries and SOSL searches.
