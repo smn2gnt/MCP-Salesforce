@@ -33,6 +33,16 @@ class SalesforceClient:
             bool: True if connection successful, False otherwise
         """
         try:
+            access_token = os.getenv('SALESFORCE_ACCESS_TOKEN')
+            instance_url = os.getenv('SALESFORCE_INSTANCE_URL')
+            
+            if access_token and instance_url:
+                self.sf = Salesforce(
+                    instance_url=instance_url,
+                    session_id=access_token
+                )
+                return True
+            
             self.sf = Salesforce(
                 username=os.getenv('SALESFORCE_USERNAME'),
                 password=os.getenv('SALESFORCE_PASSWORD'),
