@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 keywords = ["mcp", "llm", "salesforce"]
 dependencies = [
-    "mcp",
+    "fastmcp",
     "simple-salesforce",
     "python-dotenv",
 ]
