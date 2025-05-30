@@ -46,7 +46,8 @@ class SalesforceClient:
             self.sf = Salesforce(
                 username=os.getenv('SALESFORCE_USERNAME'),
                 password=os.getenv('SALESFORCE_PASSWORD'),
-                security_token=os.getenv('SALESFORCE_SECURITY_TOKEN')
+                security_token=os.getenv('SALESFORCE_SECURITY_TOKEN'),
+                domain=os.getenv('SALESFORCE_DOMAIN')
             )
             return True
         except Exception as e:
@@ -80,6 +81,60 @@ class SalesforceClient:
             self.sobjects_cache[object_name] = filtered_fields
             
         return json.dumps(self.sobjects_cache[object_name], indent=2)
+
+    def get_field_details(self, object_name: str, field_name: str) -> str:
+        """Retrieves detailed metadata for a specific field including external ID, unique, required settings.
+        
+        Args:
+            object_name (str): The name of the Salesforce object.
+            field_name (str): The API name of the field.
+            
+        Returns:
+            str: JSON representation of the field details.
+        """
+        if not self.sf:
+            raise ValueError("Salesforce connection not established.")
+            
+        try:
+            sf_object = getattr(self.sf, object_name)
+            describe_result = sf_object.describe()
+            
+            # Find the specific field
+            field_details = None
+            for field in describe_result['fields']:
+                if field['name'].lower() == field_name.lower():
+                    field_details = {
+                        'name': field['name'],
+                        'label': field['label'],
+                        'type': field['type'],
+                        'length': field['length'],
+                        'required': not field['nillable'],
+                        'unique': field['unique'],
+                        'external_id': field['externalId'],
+                        'updateable': field['updateable'],
+                        'createable': field['createable'],
+                        'custom': field['custom'],
+                        'calculated': field['calculated'],
+                        'defaulted_on_create': field['defaultedOnCreate'],
+                        'dependency_following': field['dependentPicklist'],
+                        'picklist_values': field['picklistValues'],
+                        'referenced_to': field['referenceTo'],
+                        'relationship_name': field['relationshipName']
+                    }
+                    break
+                    
+            if not field_details:
+                # Debug: show all field names containing the search term
+                matching_fields = [f['name'] for f in describe_result['fields'] if field_name.lower() in f['name'].lower()]
+                return json.dumps({
+                    "error": f"Field '{field_name}' not found in object '{object_name}'",
+                    "similar_fields": matching_fields[:10]  # Show first 10 similar fields
+                }, indent=2)
+                
+            return json.dumps(field_details, indent=2)
+            
+        except Exception as e:
+            return json.dumps({"error": f"Failed to get field details: {str(e)}"}, indent=2)
 
 # Create a server instance
 server = Server("salesforce-mcp")
@@ -382,6 +437,203 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["object_name", "record_ids"]
             },
         ),
+        types.Tool(
+            name="get_record_types",
+            description="Retrieves all record types for a specific SObject.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject (e.g., 'Account', 'Opportunity')."
+                    }
+                },
+                "required": ["object_name"]
+            },
+        ),
+        types.Tool(
+            name="get_user_permissions",
+            description="Retrieves current user's permissions for a specific SObject including field-level security.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject (e.g., 'Account', 'Contact')."
+                    }
+                },
+                "required": ["object_name"]
+            },
+        ),
+        types.Tool(
+            name="create_custom_field",
+            description="Creates a new custom field on a specified SObject using Tooling API.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject (e.g., 'Account', 'MyCustomObject__c')."
+                    },
+                    "field_name": {
+                        "type": "string",
+                        "description": "The name for the new custom field (without __c suffix)."
+                    },
+                    "field_type": {
+                        "type": "string",
+                        "description": "The type of field to create.",
+                        "enum": ["Text", "Number", "Date", "DateTime", "Checkbox", "Picklist", "Email", "Phone", "Url", "TextArea", "LongTextArea"]
+                    },
+                    "field_label": {
+                        "type": "string",
+                        "description": "The display label for the field."
+                    },
+                    "length": {
+                        "type": "number",
+                        "description": "Length for Text fields (optional, default 255)."
+                    },
+                    "precision": {
+                        "type": "number", 
+                        "description": "Precision for Number fields (optional)."
+                    },
+                    "scale": {
+                        "type": "number",
+                        "description": "Scale for Number fields (optional)."
+                    },
+                    "required": {
+                        "type": "boolean",
+                        "description": "Whether the field is required (default false)."
+                    },
+                    "unique": {
+                        "type": "boolean",
+                        "description": "Whether the field should be unique (default false)."
+                    },
+                    "external_id": {
+                        "type": "boolean",
+                        "description": "Whether the field is an external ID (default false)."
+                    }
+                },
+                "required": ["object_name", "field_name", "field_type", "field_label"]
+            },
+        ),
+        types.Tool(
+            name="update_custom_field",
+            description="Updates settings of an existing custom field using Tooling API.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject."
+                    },
+                    "field_name": {
+                        "type": "string", 
+                        "description": "The API name of the custom field (with __c suffix)."
+                    },
+                    "field_label": {
+                        "type": "string",
+                        "description": "New display label for the field (optional)."
+                    },
+                    "required": {
+                        "type": "boolean",
+                        "description": "Whether the field is required (optional)."
+                    },
+                    "unique": {
+                        "type": "boolean",
+                        "description": "Whether the field should be unique (optional)."
+                    },
+                    "external_id": {
+                        "type": "boolean", 
+                        "description": "Whether the field is an external ID (optional)."
+                    }
+                },
+                "required": ["object_name", "field_name"]
+            },
+        ),
+        types.Tool(
+            name="delete_custom_field",
+            description="Deletes an existing custom field using Tooling API. WARNING: This permanently removes the field and all its data!",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject."
+                    },
+                    "field_name": {
+                        "type": "string",
+                        "description": "The API name of the custom field to delete (with __c suffix)."
+                    }
+                },
+                "required": ["object_name", "field_name"]
+            },
+        ),
+        types.Tool(
+            name="set_field_permissions",
+            description="Sets field-level security permissions for a custom field on profiles or permission sets.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject."
+                    },
+                    "field_name": {
+                        "type": "string",
+                        "description": "The API name of the custom field (with __c suffix)."
+                    },
+                    "permission_set_name": {
+                        "type": "string",
+                        "description": "The API name of the permission set or profile (optional, defaults to 'System Administrator')."
+                    },
+                    "readable": {
+                        "type": "boolean",
+                        "description": "Whether the field is readable (default: true)."
+                    },
+                    "editable": {
+                        "type": "boolean",
+                        "description": "Whether the field is editable (default: true)."
+                    }
+                },
+                "required": ["object_name", "field_name"]
+            },
+        ),
+        types.Tool(
+            name="get_field_permissions",
+            description="Retrieves field-level security permissions for a custom field across all profiles and permission sets.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject."
+                    },
+                    "field_name": {
+                        "type": "string",
+                        "description": "The API name of the field."
+                    }
+                },
+                "required": ["object_name", "field_name"]
+            },
+        ),
+        types.Tool(
+            name="get_field_details",
+            description="Retrieves detailed metadata for a specific field of a Salesforce object, including external ID, unique, required settings.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject (e.g., 'Account', 'Contact')."
+                    },
+                    "field_name": {
+                        "type": "string",
+                        "description": "The API name of the field (e.g., 'GLN__c', 'Name', 'Email')."
+                    }
+                },
+                "required": ["object_name", "field_name"]
+            },
+        ),
     ]
 
 @server.call_tool()
@@ -619,6 +871,348 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
                 text=f"Bulk Delete {object_name} Results (JSON):\n{json.dumps(results, indent=2)}",
             )
         ]
+    elif name == "get_record_types":
+        object_name = arguments.get("object_name")
+        if not object_name:
+            raise ValueError("Missing 'object_name' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        # Query RecordType object for the specified SObject
+        query = f"SELECT Id, Name, DeveloperName, Description, IsActive FROM RecordType WHERE SobjectType = '{object_name}'"
+        results = sf_client.sf.query(query)
+        
+        return [
+            types.TextContent(
+                type="text",
+                text=f"{object_name} Record Types (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+    elif name == "get_user_permissions":
+        object_name = arguments.get("object_name")
+        if not object_name:
+            raise ValueError("Missing 'object_name' argument")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        # Get object describe info which includes user permissions
+        sf_object = getattr(sf_client.sf, object_name)
+        describe_result = sf_object.describe()
+        
+        # Extract permission information
+        permissions = {
+            "object_permissions": {
+                "createable": describe_result.get("createable", False),
+                "deletable": describe_result.get("deletable", False), 
+                "queryable": describe_result.get("queryable", False),
+                "updateable": describe_result.get("updateable", False),
+                "retrieveable": describe_result.get("retrieveable", False)
+            },
+            "field_permissions": []
+        }
+        
+        # Get field-level permissions
+        for field in describe_result.get("fields", []):
+            permissions["field_permissions"].append({
+                "name": field["name"],
+                "label": field["label"],
+                "createable": field.get("createable", False),
+                "updateable": field.get("updateable", False),
+                "nillable": field.get("nillable", False),
+                "filterable": field.get("filterable", False),
+                "sortable": field.get("sortable", False)
+            })
+        
+        return [
+            types.TextContent(
+                type="text",
+                text=f"{object_name} User Permissions (JSON):\n{json.dumps(permissions, indent=2)}",
+            )
+        ]
+    elif name == "create_custom_field":
+        object_name = arguments.get("object_name")
+        field_name = arguments.get("field_name")
+        field_type = arguments.get("field_type")
+        field_label = arguments.get("field_label")
+        
+        if not all([object_name, field_name, field_type, field_label]):
+            raise ValueError("Missing required arguments: object_name, field_name, field_type, field_label")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        # Build field definition based on type
+        field_definition = {
+            "FullName": f"{object_name}.{field_name}__c",
+            "Metadata": {
+                "type": field_type,
+                "label": field_label,
+                "required": arguments.get("required", False),
+                "unique": arguments.get("unique", False),
+                "externalId": arguments.get("external_id", False)
+            }
+        }
+        
+        # Add type-specific properties
+        if field_type == "Text":
+            field_definition["Metadata"]["length"] = arguments.get("length", 255)
+        elif field_type == "Number":
+            field_definition["Metadata"]["precision"] = arguments.get("precision", 18)
+            field_definition["Metadata"]["scale"] = arguments.get("scale", 0)
+        
+        # Create field using Tooling API
+        try:
+            result = sf_client.sf.toolingexecute("sobjects/CustomField", method="POST", data=field_definition)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Create Custom Field Result (JSON):\n{json.dumps(result, indent=2)}",
+                )
+            ]
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error creating custom field: {str(e)}",
+                )
+            ]
+    elif name == "update_custom_field":
+        object_name = arguments.get("object_name")
+        field_name = arguments.get("field_name")
+        
+        if not all([object_name, field_name]):
+            raise ValueError("Missing required arguments: object_name, field_name")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        # First, get the field ID
+        query = f"SELECT Id FROM CustomField WHERE TableEnumOrId = '{object_name}' AND DeveloperName = '{field_name.replace('__c', '')}'"
+        field_query = sf_client.sf.toolingexecute(f"query?q={query}")
+        
+        if not field_query.get("records"):
+            raise ValueError(f"Custom field {field_name} not found on {object_name}")
+        
+        field_id = field_query["records"][0]["Id"]
+        
+        # Build update payload
+        update_data = {}
+        if "field_label" in arguments:
+            update_data["Label"] = arguments["field_label"]
+        if "required" in arguments:
+            update_data["Required"] = arguments["required"]
+        if "unique" in arguments:
+            update_data["Unique"] = arguments["unique"]
+        if "external_id" in arguments:
+            update_data["ExternalId"] = arguments["external_id"]
+        
+        if not update_data:
+            raise ValueError("No update fields provided")
+        
+        # Update field using Tooling API
+        try:
+            result = sf_client.sf.toolingexecute(f"sobjects/CustomField/{field_id}", method="PATCH", data=update_data)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Update Custom Field Result (JSON):\n{json.dumps(result, indent=2)}",
+                )
+            ]
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error updating custom field: {str(e)}",
+                )
+            ]
+    
+    elif name == "delete_custom_field":
+        object_name = arguments.get("object_name")
+        field_name = arguments.get("field_name")
+        
+        if not object_name or not field_name:
+            raise ValueError("Missing 'object_name' or 'field_name' argument for delete_custom_field")
+            
+        if not field_name.endswith("__c"):
+            raise ValueError("Field name must be a custom field (ending with __c)")
+        
+        try:
+            # Find the custom field using Tooling API
+            field_query = sf_client.sf.toolingexecute(
+                f"query/?q=SELECT Id,DeveloperName,TableEnumOrId FROM CustomField WHERE DeveloperName='{field_name.replace('__c', '')}' AND TableEnumOrId='{object_name}'"
+            )
+            
+            if not field_query.get("records"):
+                raise ValueError(f"Custom field {field_name} not found on {object_name}")
+            
+            field_id = field_query["records"][0]["Id"]
+            
+            # Delete the custom field
+            result = sf_client.sf.toolingexecute(f"sobjects/CustomField/{field_id}", method="DELETE")
+            
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Custom field {field_name} on {object_name} has been successfully deleted.\nResult: {json.dumps(result, indent=2)}",
+                )
+            ]
+            
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error deleting custom field: {str(e)}",
+                )
+            ]
+    
+    elif name == "set_field_permissions":
+        object_name = arguments.get("object_name")
+        field_name = arguments.get("field_name")
+        permission_set_name = arguments.get("permission_set_name", "System Administrator")
+        readable = arguments.get("readable", True)
+        editable = arguments.get("editable", True)
+        
+        if not object_name or not field_name:
+            raise ValueError("Missing 'object_name' or 'field_name' argument for set_field_permissions")
+            
+        try:
+            # First, find the permission set or profile ID
+            perm_query = sf_client.sf.toolingexecute(
+                f"query/?q=SELECT Id,Name,IsOwnedByProfile FROM PermissionSet WHERE Name='{permission_set_name}'"
+            )
+            
+            if not perm_query.get("records"):
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"Permission set/profile '{permission_set_name}' not found.",
+                    )
+                ]
+            
+            perm_set_id = perm_query["records"][0]["Id"]
+            is_profile = perm_query["records"][0]["IsOwnedByProfile"]
+            
+            # Check if field permission already exists
+            field_perm_query = sf_client.sf.toolingexecute(
+                f"query/?q=SELECT Id FROM FieldPermissions WHERE ParentId='{perm_set_id}' AND Field='{object_name}.{field_name}'"
+            )
+            
+            field_permission_data = {
+                "ParentId": perm_set_id,
+                "SobjectType": object_name,
+                "Field": f"{object_name}.{field_name}",
+                "PermissionsRead": readable,
+                "PermissionsEdit": editable
+            }
+            
+            if field_perm_query.get("records"):
+                # Update existing permission
+                field_perm_id = field_perm_query["records"][0]["Id"]
+                result = sf_client.sf.toolingexecute(
+                    f"sobjects/FieldPermissions/{field_perm_id}", 
+                    method="PATCH", 
+                    data=field_permission_data
+                )
+                action = "updated"
+            else:
+                # Create new permission
+                result = sf_client.sf.toolingexecute(
+                    "sobjects/FieldPermissions", 
+                    method="POST", 
+                    data=field_permission_data
+                )
+                action = "created"
+            
+            permission_type = "profile" if is_profile else "permission set"
+            
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Field permissions {action} successfully!\n"
+                         f"Field: {object_name}.{field_name}\n"
+                         f"{permission_type.title()}: {permission_set_name}\n"
+                         f"Readable: {readable}\n"
+                         f"Editable: {editable}\n"
+                         f"Result: {json.dumps(result, indent=2)}",
+                )
+            ]
+            
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error setting field permissions: {str(e)}",
+                )
+            ]
+    
+    elif name == "get_field_permissions":
+        object_name = arguments.get("object_name")
+        field_name = arguments.get("field_name")
+        
+        if not object_name or not field_name:
+            raise ValueError("Missing 'object_name' or 'field_name' argument for get_field_permissions")
+            
+        try:
+            # Get all field permissions for this field
+            field_perms_query = sf_client.sf.toolingexecute(
+                f"query/?q=SELECT Id,ParentId,Parent.Name,Parent.IsOwnedByProfile,PermissionsRead,PermissionsEdit,Field FROM FieldPermissions WHERE Field='{object_name}.{field_name}'"
+            )
+            
+            if not field_perms_query.get("records"):
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"No field permissions found for {object_name}.{field_name}",
+                    )
+                ]
+            
+            permissions_list = []
+            for perm in field_perms_query["records"]:
+                permission_type = "Profile" if perm["Parent"]["IsOwnedByProfile"] else "Permission Set"
+                permissions_list.append({
+                    "name": perm["Parent"]["Name"],
+                    "type": permission_type,
+                    "readable": perm["PermissionsRead"],
+                    "editable": perm["PermissionsEdit"],
+                    "id": perm["ParentId"]
+                })
+            
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Field Permissions for {object_name}.{field_name}:\n{json.dumps(permissions_list, indent=2)}",
+                )
+            ]
+            
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error getting field permissions: {str(e)}",
+                )
+            ]
+    
+    elif name == "get_field_details":
+        object_name = arguments.get("object_name")
+        field_name = arguments.get("field_name")
+        
+        if not object_name or not field_name:
+            raise ValueError("Missing 'object_name' or 'field_name' argument for get_field_details")
+            
+        try:
+            result = sf_client.get_field_details(object_name, field_name)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Field Details for {object_name}.{field_name} (JSON):\n{result}",
+                )
+            ]
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error getting field details: {str(e)}",
+                )
+            ]
+    
     raise ValueError(f"Unknown tool: {name}")
 
 # Add prompt capabilities for common data analysis tasks
@@ -630,7 +1224,7 @@ async def run():
             write,
             InitializationOptions(
                 server_name="salesforce-mcp",
-                server_version="0.2.0",
+                server_version="0.3.0",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},
