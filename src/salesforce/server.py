@@ -630,7 +630,7 @@ async def run():
             write,
             InitializationOptions(
                 server_name="salesforce-mcp",
-                server_version="0.1.5",
+                server_version="0.2.0",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},
