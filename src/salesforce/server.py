@@ -308,6 +308,80 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["path"],
             },
         ),
+        types.Tool(
+            name="list_sobjects",
+            description="Retrieves a list of all available Salesforce SObjects (standard and custom).",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="bulk_create_records",
+            description="Creates multiple records of a specified SObject type in bulk.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject (e.g., 'Account', 'MyCustomObject__c')."
+                    },
+                    "data": {
+                        "type": "array",
+                        "description": "A list of records to create. Each record is a dictionary of field names and values.",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": True
+                        }
+                    }
+                },
+                "required": ["object_name", "data"]
+            },
+        ),
+        types.Tool(
+            name="bulk_update_records",
+            description="Updates multiple records of a specified SObject type in bulk. Each record must have an 'Id' field.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject (e.g., 'Account', 'MyCustomObject__c')."
+                    },
+                    "data": {
+                        "type": "array",
+                        "description": "A list of records to update. Each record is a dictionary of field names and values, and *must* include an 'Id' field.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "Id": {"type": "string", "description": "The ID of the record to update."}
+                            },
+                            "required": ["Id"],
+                            "additionalProperties": True
+                        }
+                    }
+                },
+                "required": ["object_name", "data"]
+            },
+        ),
+        types.Tool(
+            name="bulk_delete_records",
+            description="Deletes multiple records of a specified SObject type in bulk, given their IDs.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "object_name": {
+                        "type": "string",
+                        "description": "The API name of the Salesforce SObject (e.g., 'Account', 'MyCustomObject__c')."
+                    },
+                    "record_ids": {
+                        "type": "array",
+                        "description": "A list of record IDs (strings) to delete.",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": ["object_name", "record_ids"]
+            },
+        ),
     ]
 
 @server.call_tool()
@@ -463,6 +537,88 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
                 text=f"RESTful API Call Result (JSON):\n{json.dumps(results, indent=2)}",
             )
         ]
+    elif name == "list_sobjects":
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        global_describe = sf_client.sf.describe()
+        sobject_names = [s['name'] for s in global_describe['sobjects']]
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Available SObjects (JSON):\n{json.dumps(sobject_names, indent=2)}",
+            )
+        ]
+    elif name == "bulk_create_records":
+        object_name = arguments.get("object_name")
+        records_data = arguments.get("data")
+
+        if not object_name or not records_data:
+            raise ValueError("Missing 'object_name' or 'data' argument for bulk_create_records")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        if not isinstance(records_data, list):
+            raise ValueError("'data' argument must be a list of records for bulk_create_records")
+
+        bulk_op = getattr(sf_client.sf.bulk, object_name)
+        results = bulk_op.insert(records_data)
+
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Bulk Create {object_name} Results (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+    elif name == "bulk_update_records":
+        object_name = arguments.get("object_name")
+        records_data = arguments.get("data")
+
+        if not object_name or not records_data:
+            raise ValueError("Missing 'object_name' or 'data' argument for bulk_update_records")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        if not isinstance(records_data, list):
+            raise ValueError("'data' argument must be a list of records for bulk_update_records")
+        
+        for record in records_data:
+            if not isinstance(record, dict) or 'Id' not in record:
+                raise ValueError("Each record in 'data' must be an object and include an 'Id' field for bulk updates.")
+
+        bulk_op = getattr(sf_client.sf.bulk, object_name)
+        results = bulk_op.update(records_data)
+
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Bulk Update {object_name} Results (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
+    elif name == "bulk_delete_records":
+        object_name = arguments.get("object_name")
+        record_ids_to_delete = arguments.get("record_ids")
+
+        if not object_name or not record_ids_to_delete:
+            raise ValueError("Missing 'object_name' or 'record_ids' argument for bulk_delete_records")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        if not isinstance(record_ids_to_delete, list):
+            raise ValueError("'record_ids' argument must be a list of strings for bulk_delete_records")
+        
+        data_to_delete = []
+        for item in record_ids_to_delete:
+            if not isinstance(item, str):
+                raise ValueError("Each item in 'record_ids' must be a string ID.")
+            data_to_delete.append({'Id': item})
+
+        bulk_op = getattr(sf_client.sf.bulk, object_name)
+        results = bulk_op.delete(data_to_delete)
+
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Bulk Delete {object_name} Results (JSON):\n{json.dumps(results, indent=2)}",
+            )
+        ]
     raise ValueError(f"Unknown tool: {name}")
 
 # Add prompt capabilities for common data analysis tasks
@@ -474,7 +630,7 @@ async def run():
             write,
             InitializationOptions(
                 server_name="salesforce-mcp",
-                server_version="0.1.5",
+                server_version="0.2.0",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},
