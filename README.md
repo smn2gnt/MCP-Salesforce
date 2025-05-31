@@ -1,6 +1,6 @@
 # MCP Salesforce Connector
 
-A comprehensive Model Context Protocol (MCP) server implementation for Salesforce integration, providing **22 specialized tools** for complete Salesforce data management, schema operations, and field-level security.
+A comprehensive Model Context Protocol (MCP) server implementation for Salesforce integration, providing **21 specialized tools** for complete Salesforce data management, schema operations, and field-level security.
 
 ## Features
 
@@ -76,7 +76,6 @@ This server supports two authentication methods:
 ### Schema Management Tools
 - **`create_custom_field`** - Create new custom fields with various types and settings
 - **`update_custom_field`** - Update settings of existing custom fields (unique, external ID, etc.)
-- **`delete_custom_field`** - Delete existing custom fields (WARNING: permanently removes field and data)
 - **`get_field_details`** - Retrieve detailed metadata for specific fields including FLS settings
 
 ### Field-Level Security Tools
@@ -129,10 +128,6 @@ This server supports two authentication methods:
   - External ID settings
   - Required field settings
 
-- **`delete_custom_field`** permanently removes custom fields:
-  - ⚠️ **WARNING**: Deletes field and all associated data
-  - Useful for development and field recreation workflows
-  - Requires appropriate permissions
 
 ### Field-Level Security Management
 
@@ -161,7 +156,7 @@ This server supports two authentication methods:
 
 ## Complete Tool Reference
 
-### All 22 Available Tools
+### All 21 Available Tools
 
 | Category | Tool Name | Description |
 |----------|-----------|-------------|
@@ -181,7 +176,6 @@ This server supports two authentication methods:
 | | `bulk_delete_records` | Delete up to 10K records |
 | **Schema Management** | `create_custom_field` | Create custom fields |
 | | `update_custom_field` | Update custom field settings |
-| | `delete_custom_field` | Delete custom fields |
 | **Field Security** | `set_field_permissions` | Set field read/edit permissions |
 | | `get_field_permissions` | Get current field permissions |
 | **Advanced APIs** | `tooling_execute` | Execute Tooling API requests |

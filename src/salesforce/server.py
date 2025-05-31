@@ -551,24 +551,6 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="delete_custom_field",
-            description="Deletes an existing custom field using Tooling API. WARNING: This permanently removes the field and all its data!",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "object_name": {
-                        "type": "string",
-                        "description": "The API name of the Salesforce SObject."
-                    },
-                    "field_name": {
-                        "type": "string",
-                        "description": "The API name of the custom field to delete (with __c suffix)."
-                    }
-                },
-                "required": ["object_name", "field_name"]
-            },
-        ),
-        types.Tool(
             name="set_field_permissions",
             description="Sets field-level security permissions for a custom field on profiles or permission sets.",
             inputSchema={
@@ -1024,45 +1006,6 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
                 )
             ]
     
-    elif name == "delete_custom_field":
-        object_name = arguments.get("object_name")
-        field_name = arguments.get("field_name")
-        
-        if not object_name or not field_name:
-            raise ValueError("Missing 'object_name' or 'field_name' argument for delete_custom_field")
-            
-        if not field_name.endswith("__c"):
-            raise ValueError("Field name must be a custom field (ending with __c)")
-        
-        try:
-            # Find the custom field using Tooling API
-            field_query = sf_client.sf.toolingexecute(
-                f"query/?q=SELECT Id,DeveloperName,TableEnumOrId FROM CustomField WHERE DeveloperName='{field_name.replace('__c', '')}' AND TableEnumOrId='{object_name}'"
-            )
-            
-            if not field_query.get("records"):
-                raise ValueError(f"Custom field {field_name} not found on {object_name}")
-            
-            field_id = field_query["records"][0]["Id"]
-            
-            # Delete the custom field
-            result = sf_client.sf.toolingexecute(f"sobjects/CustomField/{field_id}", method="DELETE")
-            
-            return [
-                types.TextContent(
-                    type="text",
-                    text=f"Custom field {field_name} on {object_name} has been successfully deleted.\nResult: {json.dumps(result, indent=2)}",
-                )
-            ]
-            
-        except Exception as e:
-            return [
-                types.TextContent(
-                    type="text",
-                    text=f"Error deleting custom field: {str(e)}",
-                )
-            ]
-    
     elif name == "set_field_permissions":
         object_name = arguments.get("object_name")
         field_name = arguments.get("field_name")
@@ -1224,7 +1167,7 @@ async def run():
             write,
             InitializationOptions(
                 server_name="salesforce-mcp",
-                server_version="0.3.0",
+                server_version="0.2.3",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},
