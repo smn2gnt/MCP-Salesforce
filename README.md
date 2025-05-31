@@ -1,6 +1,6 @@
 # MCP Salesforce Connector
 
-A comprehensive Model Context Protocol (MCP) server implementation for Salesforce integration, providing **21 specialized tools** for complete Salesforce data management, schema operations, and field-level security.
+A comprehensive Model Context Protocol (MCP) server implementation for Salesforce integration, providing **25 specialized tools** for complete Salesforce data management, schema operations, reporting, user management, and field-level security.
 
 ## Features
 
@@ -15,7 +15,10 @@ A comprehensive Model Context Protocol (MCP) server implementation for Salesforc
 - Make direct REST API calls to Salesforce
 - **Enhanced metadata tools** - Get record types and user permissions
 - **Field-level security management** - Set and retrieve field permissions
-- **Schema management** - Create, update, and delete custom fields with detailed metadata
+- **Schema management** - Create and update custom fields with detailed metadata
+- **Data export capabilities** - Export query results to CSV format
+- **Reporting and analytics** - Access and execute Salesforce reports
+- **User and organization management** - List users and get organizational limits
 
 
 ## Configuration
@@ -81,6 +84,16 @@ This server supports two authentication methods:
 ### Field-Level Security Tools
 - **`set_field_permissions`** - Set read/edit permissions for fields on profiles or permission sets
 - **`get_field_permissions`** - Retrieve current field permissions across all profiles and permission sets
+
+### Data Export Tools
+- **`export_data_csv`** - Export SOQL query results to CSV format with customizable filename
+
+### Reporting & Analytics Tools
+- **`list_reports`** - Get all available reports and folders in the organization
+
+### User & Organization Management Tools
+- **`list_users`** - Get all users with profiles, roles, and status information
+- **`get_org_limits`** - Get current API usage limits and organizational features
 
 ### Advanced API Tools
 - **`tooling_execute`** - Execute Tooling API requests
@@ -156,7 +169,7 @@ This server supports two authentication methods:
 
 ## Complete Tool Reference
 
-### All 21 Available Tools
+### All 25 Available Tools
 
 | Category | Tool Name | Description |
 |----------|-----------|-------------|
@@ -178,6 +191,10 @@ This server supports two authentication methods:
 | | `update_custom_field` | Update custom field settings |
 | **Field Security** | `set_field_permissions` | Set field read/edit permissions |
 | | `get_field_permissions` | Get current field permissions |
+| **Data Export** | `export_data_csv` | Export query results to CSV |
+| **Reporting** | `list_reports` | List available reports and folders |
+| **User Management** | `list_users` | Get users with profiles and roles |
+| **Organization** | `get_org_limits` | Get API limits and org features |
 | **Advanced APIs** | `tooling_execute` | Execute Tooling API requests |
 | | `apex_execute` | Execute Apex REST requests |
 | | `restful` | Make direct REST API calls | 

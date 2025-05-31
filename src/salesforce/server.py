@@ -6,6 +6,8 @@
 # ]
 # ///
 import asyncio
+import csv
+import io
 import json
 from typing import Any, Optional
 import os
@@ -616,6 +618,62 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["object_name", "field_name"]
             },
         ),
+        types.Tool(
+            name="export_data_csv",
+            description="Export SOQL query results to CSV format",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The SOQL query to execute and export"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Optional filename for the CSV file (default: 'export.csv')"
+                    }
+                },
+                "required": ["query"]
+            },
+        ),
+        types.Tool(
+            name="list_reports",
+            description="Get all available reports and folders in the organization",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "folder_id": {
+                        "type": "string",
+                        "description": "Optional folder ID to filter reports (default: all reports)"
+                    }
+                }
+            },
+        ),
+        types.Tool(
+            name="list_users",
+            description="Get all users with their profiles, roles, and status",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "include_inactive": {
+                        "type": "boolean",
+                        "description": "Include inactive users in results (default: false)"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of users to return (default: 100)"
+                    }
+                }
+            },
+        ),
+        types.Tool(
+            name="get_org_limits",
+            description="Get current API usage limits and organizational features",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            },
+        ),
     ]
 
 @server.call_tool()
@@ -1153,6 +1211,189 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
                 types.TextContent(
                     type="text",
                     text=f"Error getting field details: {str(e)}",
+                )
+            ]
+    
+    elif name == "export_data_csv":
+        query = arguments.get("query")
+        filename = arguments.get("filename", "export.csv")
+        
+        if not query:
+            raise ValueError("Missing 'query' argument for export_data_csv")
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        try:
+            # Execute SOQL query
+            results = sf_client.sf.query_all(query)
+            records = results.get("records", [])
+            
+            if not records:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text="No records found for the query. CSV file not created.",
+                    )
+                ]
+            
+            # Create CSV content
+            output = io.StringIO()
+            
+            # Get field names (excluding 'attributes')
+            field_names = [key for key in records[0].keys() if key != 'attributes']
+            
+            writer = csv.DictWriter(output, fieldnames=field_names)
+            writer.writeheader()
+            
+            # Write records (excluding 'attributes' field)
+            for record in records:
+                clean_record = {k: v for k, v in record.items() if k != 'attributes'}
+                writer.writerow(clean_record)
+            
+            csv_content = output.getvalue()
+            output.close()
+            
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"CSV Export completed successfully!\n\nFilename: {filename}\nRecords exported: {len(records)}\nFields: {', '.join(field_names)}\n\nCSV Content Preview (first 500 chars):\n{csv_content[:500]}{'...' if len(csv_content) > 500 else ''}",
+                )
+            ]
+            
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error exporting data to CSV: {str(e)}",
+                )
+            ]
+    
+    elif name == "list_reports":
+        folder_id = arguments.get("folder_id")
+        
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        try:
+            # Get reports using Analytics REST API
+            if folder_id:
+                reports_url = f"sobjects/Report?q=SELECT Id,Name,DeveloperName,FolderName,Description,LastRunDate FROM Report WHERE FolderId = '{folder_id}'"
+            else:
+                reports_url = "sobjects/Report?q=SELECT Id,Name,DeveloperName,FolderName,Description,LastRunDate FROM Report"
+            
+            # Use REST API to get reports
+            reports_result = sf_client.sf.query("SELECT Id,Name,DeveloperName,FolderName,Description,LastRunDate FROM Report ORDER BY FolderName, Name")
+            
+            # Also get report folders
+            folders_result = sf_client.sf.query("SELECT Id,Name,DeveloperName,Type FROM Folder WHERE Type = 'Report' ORDER BY Name")
+            
+            result_data = {
+                "reports": reports_result.get("records", []),
+                "folders": folders_result.get("records", []),
+                "total_reports": len(reports_result.get("records", [])),
+                "total_folders": len(folders_result.get("records", []))
+            }
+            
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Reports and Folders (JSON):\n{json.dumps(result_data, indent=2)}",
+                )
+            ]
+            
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error listing reports: {str(e)}",
+                )
+            ]
+    
+    elif name == "list_users":
+        include_inactive = arguments.get("include_inactive", False)
+        limit = arguments.get("limit", 100)
+        
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        try:
+            # Build SOQL query for users
+            active_filter = "" if include_inactive else "WHERE IsActive = TRUE"
+            
+            query = f"""
+            SELECT Id, Username, FirstName, LastName, Email, IsActive, 
+                   Profile.Name, UserRole.Name, LastLoginDate, CreatedDate
+            FROM User 
+            {active_filter}
+            ORDER BY LastName, FirstName
+            LIMIT {limit}
+            """
+            
+            users_result = sf_client.sf.query(query)
+            
+            # Get user count
+            count_query = f"SELECT COUNT() FROM User {active_filter}"
+            total_count = sf_client.sf.query(count_query)["totalSize"]
+            
+            result_data = {
+                "users": users_result.get("records", []),
+                "total_count": total_count,
+                "returned_count": len(users_result.get("records", [])),
+                "include_inactive": include_inactive,
+                "limit": limit
+            }
+            
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Users List (JSON):\n{json.dumps(result_data, indent=2)}",
+                )
+            ]
+            
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error listing users: {str(e)}",
+                )
+            ]
+    
+    elif name == "get_org_limits":
+        if not sf_client.sf:
+            raise ValueError("Salesforce connection not established.")
+        
+        try:
+            # Get organization limits from REST API
+            limits = sf_client.sf.restful("limits")
+            
+            # Get additional org info
+            org_info = sf_client.sf.query("SELECT Id, Name, OrganizationType, IsSandbox, InstanceName FROM Organization")
+            
+            result_data = {
+                "organization": org_info.get("records", [{}])[0] if org_info.get("records") else {},
+                "limits": limits,
+                "summary": {
+                    "api_requests_used": limits.get("DailyApiRequests", {}).get("Max", 0) - limits.get("DailyApiRequests", {}).get("Remaining", 0),
+                    "api_requests_remaining": limits.get("DailyApiRequests", {}).get("Remaining", 0),
+                    "api_requests_limit": limits.get("DailyApiRequests", {}).get("Max", 0),
+                    "data_storage_used_mb": limits.get("DataStorageMB", {}).get("Max", 0) - limits.get("DataStorageMB", {}).get("Remaining", 0),
+                    "data_storage_remaining_mb": limits.get("DataStorageMB", {}).get("Remaining", 0),
+                    "data_storage_limit_mb": limits.get("DataStorageMB", {}).get("Max", 0)
+                }
+            }
+            
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Organization Limits and Info (JSON):\n{json.dumps(result_data, indent=2)}",
+                )
+            ]
+            
+        except Exception as e:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error getting organization limits: {str(e)}",
                 )
             ]
     
