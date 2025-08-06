@@ -35,18 +35,20 @@ class SalesforceClient:
         try:
             access_token = os.getenv('SALESFORCE_ACCESS_TOKEN')
             instance_url = os.getenv('SALESFORCE_INSTANCE_URL')
-            
+            domain = os.getenv('SALESFORCE_DOMAIN')
             if access_token and instance_url:
                 self.sf = Salesforce(
                     instance_url=instance_url,
-                    session_id=access_token
+                    session_id=access_token,
+                    domain=domain
                 )
                 return True
             
             self.sf = Salesforce(
                 username=os.getenv('SALESFORCE_USERNAME'),
                 password=os.getenv('SALESFORCE_PASSWORD'),
-                security_token=os.getenv('SALESFORCE_SECURITY_TOKEN')
+                security_token=os.getenv('SALESFORCE_SECURITY_TOKEN'),
+                domain=domain
             )
             return True
         except Exception as e:
