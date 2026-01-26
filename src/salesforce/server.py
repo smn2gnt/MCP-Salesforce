@@ -28,14 +28,21 @@ class SalesforceClient:
 
     def connect(self) -> bool:
         """Establishes connection to Salesforce using environment variables.
-        
+
+        Supports three authentication methods (checked in order):
+        1. OAuth Access Token: SALESFORCE_ACCESS_TOKEN + SALESFORCE_INSTANCE_URL
+        2. Client Credentials: SALESFORCE_CLIENT_ID + SALESFORCE_CLIENT_SECRET
+        3. Username/Password: SALESFORCE_USERNAME + SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN
+
         Returns:
             bool: True if connection successful, False otherwise
         """
         try:
+            domain = os.getenv('SALESFORCE_DOMAIN')
+
+            # Method 1: OAuth Access Token
             access_token = os.getenv('SALESFORCE_ACCESS_TOKEN')
             instance_url = os.getenv('SALESFORCE_INSTANCE_URL')
-            domain = os.getenv('SALESFORCE_DOMAIN')
             if access_token and instance_url:
                 self.sf = Salesforce(
                     instance_url=instance_url,
@@ -43,7 +50,19 @@ class SalesforceClient:
                     domain=domain
                 )
                 return True
-            
+
+            # Method 2: Client Credentials (OAuth 2.0 Client Credentials Flow)
+            client_id = os.getenv('SALESFORCE_CLIENT_ID')
+            client_secret = os.getenv('SALESFORCE_CLIENT_SECRET')
+            if client_id and client_secret:
+                self.sf = Salesforce(
+                    consumer_key=client_id,
+                    consumer_secret=client_secret,
+                    domain=domain
+                )
+                return True
+
+            # Method 3: Username/Password (Legacy)
             self.sf = Salesforce(
                 username=os.getenv('SALESFORCE_USERNAME'),
                 password=os.getenv('SALESFORCE_PASSWORD'),

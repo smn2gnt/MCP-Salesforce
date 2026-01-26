@@ -12,12 +12,11 @@ A Model Context Protocol (MCP) server implementation for Salesforce integration,
 - Execute Apex REST requests
 - Make direct REST API calls to Salesforce
 
-
 ## Configuration
+
 ### Model Context Protocol
 
 To use this server with the Model Context Protocol, you need to configure it in your `claude_desktop_config.json` file. Add the following entry to the `mcpServers` section:
-
 
     {
         "mcpServers": {
@@ -38,14 +37,14 @@ To use this server with the Model Context Protocol, you need to configure it in 
     }
     
 
-
 **Note on Salesforce Authentication Methods**
 
-This server supports two authentication methods:
+This server supports three authentication methods (checked in order):
 
-- **OAuth (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables. 
-- **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`. 
+1. **OAuth Access Token (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables.
+2. **Client Credentials:** Set `SALESFORCE_CLIENT_ID` and `SALESFORCE_CLIENT_SECRET` for OAuth 2.0 Client Credentials flow. This is useful for server-to-server integrations.
+3. **Username/Password (Legacy):** If neither of the above are set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`.
 
 **Environment Configuration**
 
-- **`SALESFORCE_DOMAIN` (Optional):** Set to `test` to connect to a Salesforce sandbox environment. If not set or left empty, the server will connect to the production environment. 
+- **`SALESFORCE_DOMAIN` (Optional):** Set to `test` to connect to a Salesforce sandbox environment. If not set or left empty, the server will connect to the production environment.
