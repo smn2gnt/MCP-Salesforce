@@ -1,16 +1,13 @@
-# MCP Salesforce Connector
+# MCP Salesforce Connector (Read-Only)
 
-A Model Context Protocol (MCP) server implementation for Salesforce integration, allowing LLMs to interact with Salesforce data through SOQL queries and SOSL searches.
+A read-only fork of [MCP-Salesforce](https://github.com/smn2gnt/MCP-Salesforce). All write, mutate, delete, and code execution tools have been removed so there is zero possibility of an AI agent accidentally modifying Salesforce data.
 
 ## Features
 
 - Execute SOQL (Salesforce Object Query Language) queries
 - Perform SOSL (Salesforce Object Search Language) searches
 - Retrieve metadata for Salesforce objects, including field names, labels, and types
-- Retrieve, create, update, and delete records
-- Execute Tooling API requests
-- Execute Apex REST requests
-- Make direct REST API calls to Salesforce
+- Retrieve a specific record by ID
 
 
 ## Configuration
@@ -36,16 +33,16 @@ To use this server with the Model Context Protocol, you need to configure it in 
             }
         }
     }
-    
+
 
 
 **Note on Salesforce Authentication Methods**
 
 This server supports two authentication methods:
 
-- **OAuth (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables. 
-- **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`. 
+- **OAuth (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables.
+- **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`.
 
 **Environment Configuration**
 
-- **`SALESFORCE_DOMAIN` (Optional):** Set to `test` to connect to a Salesforce sandbox environment. If not set or left empty, the server will connect to the production environment. 
+- **`SALESFORCE_DOMAIN` (Optional):** Set to `test` to connect to a Salesforce sandbox environment. If not set or left empty, the server will connect to the production environment.
