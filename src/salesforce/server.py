@@ -359,9 +359,9 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
             raise ValueError("Missing 'object_name' or 'record_id' argument")
         if not sf_client.sf:
             raise ValueError("Salesforce connection not established.")
+        sf_object = getattr(sf_client.sf, object_name)
         if not isinstance(sf_object, SFType):
             raise ValueError(f"Invalid Salesforce object name: {object_name}")
-        sf_object = getattr(sf_client.sf, object_name)
         results = sf_object.get(record_id)
         return [
             types.TextContent(
