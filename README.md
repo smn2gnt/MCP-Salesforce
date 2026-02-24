@@ -49,4 +49,5 @@ This server supports three authentication methods:
 
 **Environment Configuration**
 
-- **`SALESFORCE_DOMAIN` (Optional):** Set to `test` to connect to a Salesforce sandbox environment. If not set or left empty, the server will connect to the production environment. 
+- **`SALESFORCE_DOMAIN` (Optional):** Set to `test` to connect to a Salesforce sandbox environment. If not set or left empty, the server will connect to the production environment.
+- **`SALESFORCE_CLI_TARGET_ORG` (Optional):** When using the Salesforce CLI authentication method, set this to target a specific org alias or username instead of the default org.
