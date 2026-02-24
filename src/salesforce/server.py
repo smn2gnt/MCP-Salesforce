@@ -68,6 +68,19 @@ class SalesforceClient:
             return False
 
     def _get_cli_auth(self) -> Optional[dict[str, str]]:
+        """Retrieves Salesforce authentication from the Salesforce CLI.
+
+        This method attempts to use either the `sf` or `sfdx` CLI to obtain
+        the access token and instance URL for a Salesforce org. If the
+        `SALESFORCE_CLI_TARGET_ORG` environment variable is set, its value
+        is used to select the target org; otherwise, the CLI default org is
+        used.
+
+        Returns:
+            Optional[dict[str, str]]: A dictionary containing `access_token`
+            and `instance_url` keys if authentication details can be
+            retrieved, otherwise `None`.
+        """
         target_org = os.getenv("SALESFORCE_CLI_TARGET_ORG")
         sf_cmd = shutil.which("sf")
         sfdx_cmd = shutil.which("sfdx")
