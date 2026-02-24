@@ -103,6 +103,7 @@ class SalesforceClient:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                timeout=30,
             )
             payload = json.loads(result.stdout)
             auth = payload.get("result", {})
@@ -110,6 +111,8 @@ class SalesforceClient:
             instance_url = auth.get("instanceUrl")
             if access_token and instance_url:
                 return {"access_token": access_token, "instance_url": instance_url}
+        except subprocess.TimeoutExpired as e:
+            print(f"Salesforce CLI auth lookup timed out: {str(e)}")
         except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
             print(f"Salesforce CLI auth lookup failed: {str(e)}")
 
