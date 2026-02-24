@@ -41,9 +41,10 @@ To use this server with the Model Context Protocol, you need to configure it in 
 
 **Note on Salesforce Authentication Methods**
 
-This server supports two authentication methods:
+This server supports three authentication methods:
 
 - **OAuth (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables. 
+- **Salesforce CLI (Default Org):** If no OAuth env vars are set, the server will try to use the active Salesforce CLI default org from the current workspace (via `sf org display --json` or `sfdx force:org:display --json`). Optionally set `SALESFORCE_CLI_TARGET_ORG` to target a specific org.
 - **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`. 
 
 **Environment Configuration**

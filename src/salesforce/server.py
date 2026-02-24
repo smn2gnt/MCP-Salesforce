@@ -9,6 +9,8 @@ import asyncio
 import json
 from typing import Any, Optional
 import os
+import shutil
+import subprocess
 from dotenv import load_dotenv
 
 from simple_salesforce import Salesforce
@@ -44,6 +46,15 @@ class SalesforceClient:
                     domain=domain
                 )
                 return True
+
+            cli_auth = self._get_cli_auth()
+            if cli_auth:
+                self.sf = Salesforce(
+                    instance_url=cli_auth['instance_url'],
+                    session_id=cli_auth['access_token'],
+                    domain=domain
+                )
+                return True
             
             self.sf = Salesforce(
                 username=os.getenv('SALESFORCE_USERNAME'),
@@ -55,6 +66,41 @@ class SalesforceClient:
         except Exception as e:
             print(f"Salesforce connection failed: {str(e)}")
             return False
+
+    def _get_cli_auth(self) -> Optional[dict[str, str]]:
+        target_org = os.getenv("SALESFORCE_CLI_TARGET_ORG")
+        sf_cmd = shutil.which("sf")
+        sfdx_cmd = shutil.which("sfdx")
+
+        if sf_cmd:
+            cmd = [sf_cmd, "org", "display", "--json"]
+            if target_org:
+                cmd.extend(["--target-org", target_org])
+        elif sfdx_cmd:
+            cmd = [sfdx_cmd, "force:org:display", "--json"]
+            if target_org:
+                cmd.extend(["--targetusername", target_org])
+        else:
+            return None
+
+        try:
+            result = subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            payload = json.loads(result.stdout)
+            auth = payload.get("result", {})
+            access_token = auth.get("accessToken")
+            instance_url = auth.get("instanceUrl")
+            if access_token and instance_url:
+                return {"access_token": access_token, "instance_url": instance_url}
+        except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+            print(f"Salesforce CLI auth lookup failed: {str(e)}")
+
+        return None
     
     def get_object_fields(self, object_name: str) -> str:
         """Retrieves field Names, labels and typesfor a specific Salesforce object.
