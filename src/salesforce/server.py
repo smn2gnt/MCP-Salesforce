@@ -52,7 +52,6 @@ class SalesforceClient:
                 self.sf = Salesforce(
                     instance_url=cli_auth['instance_url'],
                     session_id=cli_auth['access_token'],
-                    domain=domain
                 )
                 return True
             
