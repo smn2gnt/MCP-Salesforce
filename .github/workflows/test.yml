@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v8.0.0
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v8.0.0
 
       - name: Set up Python
         run: uv python install 3.12
