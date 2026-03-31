@@ -95,25 +95,16 @@ class SalesforceClient:
             bool: True if connection successful, False otherwise
         """
         try:
-            domain = os.getenv('SALESFORCE_DOMAIN')
+            domain = os.getenv('SALESFORCE_DOMAIN') or 'login'
 
             # Method 1: OAuth Access Token
             access_token = os.getenv('SALESFORCE_ACCESS_TOKEN')
             instance_url = os.getenv('SALESFORCE_INSTANCE_URL')
-            domain = os.getenv('SALESFORCE_DOMAIN')
             if access_token and instance_url:
                 self.sf = Salesforce(
                     instance_url=instance_url,
                     session_id=access_token,
                     domain=domain
-                )
-                return True
-
-            cli_auth = self._get_cli_auth()
-            if cli_auth:
-                self.sf = Salesforce(
-                    instance_url=cli_auth['instance_url'],
-                    session_id=cli_auth['access_token'],
                 )
                 return True
 
@@ -127,8 +118,17 @@ class SalesforceClient:
                     domain=domain
                 )
                 return True
+            
+            # Method 3: Salesforce CLI Authentication
+            cli_auth = self._get_cli_auth()
+            if cli_auth:
+                self.sf = Salesforce(
+                    instance_url=cli_auth['instance_url'],
+                    session_id=cli_auth['access_token'],
+                )
+                return True
 
-            # Method 3: Username/Password (Legacy)
+            # Method 4: Username/Password (Legacy)
             self.sf = Salesforce(
                 username=os.getenv('SALESFORCE_USERNAME'),
                 password=os.getenv('SALESFORCE_PASSWORD'),
