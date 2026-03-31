@@ -11,7 +11,30 @@ import csv
 import io
 from typing import Any, Optional
 import os
+import shutil
+import subprocess
 from dotenv import load_dotenv
+from simple_salesforce import Salesforce
+from simple_salesforce.exceptions import SalesforceError
+from simple_salesforce import SFType
+
+import mcp.types as types
+from mcp.server import Server, NotificationOptions
+from mcp.server.models import InitializationOptions
+import mcp.server.stdio
+
+
+def _strip_attributes(record: dict) -> dict:
+    """Recursively strip 'attributes' metadata from a Salesforce record dict."""
+    clean = {}
+    for k, v in record.items():
+        if k == 'attributes':
+            continue
+        if isinstance(v, dict):
+            clean[k] = _strip_attributes(v)
+        else:
+            clean[k] = v
+    return clean
 
 
 def format_records(records: list[dict], format_type: str = "csv", include_total: bool = True) -> str:
@@ -25,20 +48,13 @@ def format_records(records: list[dict], format_type: str = "csv", include_total:
     Returns:
         Formatted string representation of records
     """
+    total_line = f"Total: {len(records)} records\n" if include_total else ""
+
     if not records:
-        return "No records found."
+        return total_line + "No records found."
 
-    # Strip 'attributes' metadata from all records
-    clean_records = []
-    for record in records:
-        clean_record = {k: v for k, v in record.items() if k != 'attributes'}
-        # Recursively clean nested records
-        for key, value in clean_record.items():
-            if isinstance(value, dict) and 'attributes' in value:
-                clean_record[key] = {k: v for k, v in value.items() if k != 'attributes'}
-        clean_records.append(clean_record)
-
-    total_line = f"Total: {len(clean_records)} records\n" if include_total else ""
+    # Strip 'attributes' metadata from all records (fully recursive)
+    clean_records = [_strip_attributes(record) for record in records]
 
     if format_type == "json":
         return total_line + json.dumps(clean_records, indent=2)
@@ -47,32 +63,18 @@ def format_records(records: list[dict], format_type: str = "csv", include_total:
         return total_line + json.dumps(clean_records, separators=(',', ':'))
 
     # Default: CSV format (most token-efficient)
-    if not clean_records:
-        return total_line + "No records."
-
     output = io.StringIO()
-    fieldnames = list(clean_records[0].keys())
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    # Collect all field names across all records to handle sparse results
+    fieldnames = list(dict.fromkeys(k for record in clean_records for k in record))
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
     writer.writeheader()
     for record in clean_records:
         # Flatten any nested dicts for CSV
-        flat_record = {}
-        for k, v in record.items():
-            if isinstance(v, dict):
-                flat_record[k] = json.dumps(v)
-            else:
-                flat_record[k] = v
+        flat_record = {k: json.dumps(v) if isinstance(v, dict) else v for k, v in record.items()}
         writer.writerow(flat_record)
 
     return total_line + output.getvalue()
 
-from simple_salesforce import Salesforce
-from simple_salesforce.exceptions import SalesforceError
-
-import mcp.types as types
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
-import mcp.server.stdio
 
 class SalesforceClient:
     """Handles Salesforce operations and caching."""
@@ -98,11 +100,20 @@ class SalesforceClient:
             # Method 1: OAuth Access Token
             access_token = os.getenv('SALESFORCE_ACCESS_TOKEN')
             instance_url = os.getenv('SALESFORCE_INSTANCE_URL')
+            domain = os.getenv('SALESFORCE_DOMAIN')
             if access_token and instance_url:
                 self.sf = Salesforce(
                     instance_url=instance_url,
                     session_id=access_token,
                     domain=domain
+                )
+                return True
+
+            cli_auth = self._get_cli_auth()
+            if cli_auth:
+                self.sf = Salesforce(
+                    instance_url=cli_auth['instance_url'],
+                    session_id=cli_auth['access_token'],
                 )
                 return True
 
@@ -128,6 +139,57 @@ class SalesforceClient:
         except Exception as e:
             print(f"Salesforce connection failed: {str(e)}")
             return False
+
+    def _get_cli_auth(self) -> Optional[dict[str, str]]:
+        """Retrieves Salesforce authentication from the Salesforce CLI.
+
+        This method attempts to use either the `sf` or `sfdx` CLI to obtain
+        the access token and instance URL for a Salesforce org. If the
+        `SALESFORCE_CLI_TARGET_ORG` environment variable is set, its value
+        is used to select the target org; otherwise, the CLI default org is
+        used.
+
+        Returns:
+            Optional[dict[str, str]]: A dictionary containing `access_token`
+            and `instance_url` keys if authentication details can be
+            retrieved, otherwise `None`.
+        """
+        target_org = os.getenv("SALESFORCE_CLI_TARGET_ORG")
+        sf_cmd = shutil.which("sf")
+        sfdx_cmd = shutil.which("sfdx")
+
+        if sf_cmd:
+            cmd = [sf_cmd, "org", "display", "--json"]
+            if target_org:
+                cmd.extend(["--target-org", target_org])
+        elif sfdx_cmd:
+            cmd = [sfdx_cmd, "force:org:display", "--json"]
+            if target_org:
+                cmd.extend(["--targetusername", target_org])
+        else:
+            return None
+
+        try:
+            result = subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+            )
+            payload = json.loads(result.stdout)
+            auth = payload.get("result", {})
+            access_token = auth.get("accessToken")
+            instance_url = auth.get("instanceUrl")
+            if access_token and instance_url:
+                return {"access_token": access_token, "instance_url": instance_url}
+        except subprocess.TimeoutExpired as e:
+            print(f"Salesforce CLI auth lookup timed out: {str(e)}")
+        except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+            print(f"Salesforce CLI auth lookup failed: {str(e)}")
+
+        return None
     
     def get_object_fields(self, object_name: str) -> str:
         """Retrieves field names and types for a Salesforce object in CSV format.
@@ -474,6 +536,8 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         if not sf_client.sf:
             raise ValueError("Salesforce connection not established.")
         sf_object = getattr(sf_client.sf, object_name)
+        if not isinstance(sf_object, SFType):
+            raise ValueError(f"Invalid Salesforce object name: {object_name}")
         results = sf_object.get(record_id)
         # Strip attributes
         clean = {k: v for k, v in results.items() if k != 'attributes'}

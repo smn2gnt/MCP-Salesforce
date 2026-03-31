@@ -37,14 +37,17 @@ To use this server with the Model Context Protocol, you need to configure it in 
     }
     
 
+
 **Note on Salesforce Authentication Methods**
 
-This server supports three authentication methods (checked in order):
+This server supports three authentication methods:
 
-1. **OAuth Access Token (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables.
-2. **Client Credentials:** Set `SALESFORCE_CLIENT_ID` and `SALESFORCE_CLIENT_SECRET` for OAuth 2.0 Client Credentials flow. This is useful for server-to-server integrations.
-3. **Username/Password (Legacy):** If neither of the above are set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`.
+- **OAuth (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables. 
+- **Client Credentials:** Set `SALESFORCE_CLIENT_ID` and `SALESFORCE_CLIENT_SECRET` for OAuth 2.0 Client Credentials flow. This is useful for server-to-server integrations.
+- **Salesforce CLI (Default Org):** If no OAuth env vars are set, the server will try to use the active Salesforce CLI default org from the current workspace (via `sf org display --json` or `sfdx force:org:display --json`). Optionally set `SALESFORCE_CLI_TARGET_ORG` to target a specific org.
+- **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`. 
 
 **Environment Configuration**
 
 - **`SALESFORCE_DOMAIN` (Optional):** Set to `test` to connect to a Salesforce sandbox environment. If not set or left empty, the server will connect to the production environment.
+- **`SALESFORCE_CLI_TARGET_ORG` (Optional):** When using the Salesforce CLI authentication method, set this to target a specific org alias or username instead of the default org.
