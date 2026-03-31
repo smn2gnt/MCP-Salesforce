@@ -48,10 +48,10 @@ def format_records(records: list[dict], format_type: str = "csv", include_total:
     Returns:
         Formatted string representation of records
     """
-    total_line = f"Total: {len(records)} records\n" if include_total else ""
-
     if not records:
-        return total_line + "No records found."
+        return "No records found."
+
+    total_line = f"Total: {len(records)} records\n" if include_total else ""
 
     # Strip 'attributes' metadata from all records (fully recursive)
     clean_records = [_strip_attributes(record) for record in records]

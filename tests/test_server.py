@@ -4,6 +4,7 @@ import json
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
+from simple_salesforce import SFType
 from src.salesforce.server import format_records, SalesforceClient
 
 
@@ -303,7 +304,7 @@ class TestToolHandlers:
         """get_record should strip attributes from response."""
         from src.salesforce.server import handle_call_tool
 
-        mock_sf_object = Mock()
+        mock_sf_object = Mock(spec=SFType)
         mock_sf_object.get.return_value = {
             'attributes': {'type': 'Account', 'url': '/test'},
             'Id': '001',
