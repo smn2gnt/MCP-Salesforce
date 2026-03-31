@@ -86,10 +86,11 @@ class SalesforceClient:
     def connect(self) -> bool:
         """Establishes connection to Salesforce using environment variables.
 
-        Supports three authentication methods (checked in order):
+        Supports four authentication methods (checked in order):
         1. OAuth Access Token: SALESFORCE_ACCESS_TOKEN + SALESFORCE_INSTANCE_URL
         2. Client Credentials: SALESFORCE_CLIENT_ID + SALESFORCE_CLIENT_SECRET
-        3. Username/Password: SALESFORCE_USERNAME + SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN
+        3. Salesforce CLI Authentication (using an existing Salesforce CLI org)
+        4. Username/Password (Legacy): SALESFORCE_USERNAME + SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN
 
         Returns:
             bool: True if connection successful, False otherwise
