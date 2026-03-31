@@ -7,12 +7,13 @@
 # ///
 import asyncio
 import json
+import csv
+import io
 from typing import Any, Optional
 import os
 import shutil
 import subprocess
 from dotenv import load_dotenv
-
 from simple_salesforce import Salesforce
 from simple_salesforce.exceptions import SalesforceError
 from simple_salesforce import SFType
@@ -21,6 +22,59 @@ import mcp.types as types
 from mcp.server import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
 import mcp.server.stdio
+
+
+def _strip_attributes(record: dict) -> dict:
+    """Recursively strip 'attributes' metadata from a Salesforce record dict."""
+    clean = {}
+    for k, v in record.items():
+        if k == 'attributes':
+            continue
+        if isinstance(v, dict):
+            clean[k] = _strip_attributes(v)
+        else:
+            clean[k] = v
+    return clean
+
+
+def format_records(records: list[dict], format_type: str = "csv", include_total: bool = True) -> str:
+    """Format Salesforce records in a token-optimized way.
+
+    Args:
+        records: List of record dictionaries from Salesforce
+        format_type: 'csv' (default, most compact), 'compact' (JSON without attributes), 'json' (full)
+        include_total: Whether to include total count in output
+
+    Returns:
+        Formatted string representation of records
+    """
+    if not records:
+        return "No records found."
+
+    total_line = f"Total: {len(records)} records\n" if include_total else ""
+
+    # Strip 'attributes' metadata from all records (fully recursive)
+    clean_records = [_strip_attributes(record) for record in records]
+
+    if format_type == "json":
+        return total_line + json.dumps(clean_records, indent=2)
+
+    if format_type == "compact":
+        return total_line + json.dumps(clean_records, separators=(',', ':'))
+
+    # Default: CSV format (most token-efficient)
+    output = io.StringIO()
+    # Collect all field names across all records to handle sparse results
+    fieldnames = list(dict.fromkeys(k for record in clean_records for k in record))
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+    writer.writeheader()
+    for record in clean_records:
+        # Flatten any nested dicts for CSV
+        flat_record = {k: json.dumps(v) if isinstance(v, dict) else v for k, v in record.items()}
+        writer.writerow(flat_record)
+
+    return total_line + output.getvalue()
+
 
 class SalesforceClient:
     """Handles Salesforce operations and caching."""
@@ -31,14 +85,22 @@ class SalesforceClient:
 
     def connect(self) -> bool:
         """Establishes connection to Salesforce using environment variables.
-        
+
+        Supports four authentication methods (checked in order):
+        1. OAuth Access Token: SALESFORCE_ACCESS_TOKEN + SALESFORCE_INSTANCE_URL
+        2. Client Credentials: SALESFORCE_CLIENT_ID + SALESFORCE_CLIENT_SECRET
+        3. Salesforce CLI Authentication (using an existing Salesforce CLI org)
+        4. Username/Password (Legacy): SALESFORCE_USERNAME + SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN
+
         Returns:
             bool: True if connection successful, False otherwise
         """
         try:
+            domain = os.getenv('SALESFORCE_DOMAIN') or 'login'
+
+            # Method 1: OAuth Access Token
             access_token = os.getenv('SALESFORCE_ACCESS_TOKEN')
             instance_url = os.getenv('SALESFORCE_INSTANCE_URL')
-            domain = os.getenv('SALESFORCE_DOMAIN')
             if access_token and instance_url:
                 self.sf = Salesforce(
                     instance_url=instance_url,
@@ -47,6 +109,18 @@ class SalesforceClient:
                 )
                 return True
 
+            # Method 2: Client Credentials (OAuth 2.0 Client Credentials Flow)
+            client_id = os.getenv('SALESFORCE_CLIENT_ID')
+            client_secret = os.getenv('SALESFORCE_CLIENT_SECRET')
+            if client_id and client_secret:
+                self.sf = Salesforce(
+                    consumer_key=client_id,
+                    consumer_secret=client_secret,
+                    domain=domain
+                )
+                return True
+            
+            # Method 3: Salesforce CLI Authentication
             cli_auth = self._get_cli_auth()
             if cli_auth:
                 self.sf = Salesforce(
@@ -54,7 +128,8 @@ class SalesforceClient:
                     session_id=cli_auth['access_token'],
                 )
                 return True
-            
+
+            # Method 4: Username/Password (Legacy)
             self.sf = Salesforce(
                 username=os.getenv('SALESFORCE_USERNAME'),
                 password=os.getenv('SALESFORCE_PASSWORD'),
@@ -118,32 +193,33 @@ class SalesforceClient:
         return None
     
     def get_object_fields(self, object_name: str) -> str:
-        """Retrieves field Names, labels and typesfor a specific Salesforce object.
+        """Retrieves field names and types for a Salesforce object in CSV format.
 
         Args:
             object_name (str): The name of the Salesforce object.
 
         Returns:
-            str: JSON representation of the object fields.
+            str: CSV representation of the object fields.
         """
         if not self.sf:
             raise ValueError("Salesforce connection not established.")
         if object_name not in self.sobjects_cache:
             sf_object = getattr(self.sf, object_name)
             fields = sf_object.describe()['fields']
-            filtered_fields = []
-            for field in fields:
-                filtered_fields.append({
-                    'label': field['label'],
-                    'name': field['name'],
-                    'updateable': field['updateable'],
-                    'type': field['type'],
-                    'length': field['length'],
-                    'picklistValues': field['picklistValues']
-                })
-            self.sobjects_cache[object_name] = filtered_fields
-            
-        return json.dumps(self.sobjects_cache[object_name], indent=2)
+            self.sobjects_cache[object_name] = fields
+
+        fields = self.sobjects_cache[object_name]
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['name', 'label', 'type', 'updateable'])
+        for field in fields:
+            writer.writerow([
+                field['name'],
+                field['label'],
+                field['type'],
+                field['updateable']
+            ])
+        return f"Total: {len(fields)} fields\n{output.getvalue()}"
 
 # Create a server instance
 server = Server("salesforce-mcp")
@@ -168,13 +244,29 @@ async def handle_list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="run_soql_query",
-            description="Executes a SOQL query against Salesforce",
+            description="""Executes a SOQL query against Salesforce.
+
+TOKEN OPTIMIZATION GUIDELINES:
+- Always SELECT only the fields you need (never SELECT *)
+- Use LIMIT to restrict results (start with LIMIT 10, increase if needed)
+- Use WHERE clauses to filter data server-side
+- Default output is CSV format (most token-efficient)
+- Use format='json' only when you need nested data structure
+- You can always run additional queries if you need more data
+
+Example efficient query: SELECT Id, Name FROM Account WHERE IsActive = true LIMIT 20""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The SOQL query to execute",
+                        "description": "The SOQL query to execute. Always include LIMIT clause and select only needed fields.",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format: 'csv' (default, most compact), 'compact' (JSON no whitespace), 'json' (full JSON)",
+                        "enum": ["csv", "compact", "json"],
+                        "default": "csv",
                     },
                 },
                 "required": ["query"],
@@ -182,13 +274,22 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="run_sosl_search",
-            description="Executes a SOSL search against Salesforce",
+            description="""Executes a SOSL search against Salesforce.
+
+TOKEN OPTIMIZATION: Use RETURNING clause to limit fields and objects.
+Example: FIND {searchterm} RETURNING Account(Id, Name), Contact(Id, Name) LIMIT 10""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "The SOSL search to execute (e.g., 'FIND {John Smith} IN ALL FIELDS')",
+                        "description": "The SOSL search to execute. Use RETURNING to specify fields and LIMIT for result count.",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format: 'csv' (default), 'compact', 'json'",
+                        "enum": ["csv", "compact", "json"],
+                        "default": "csv",
                     },
                 },
                 "required": ["search"],
@@ -196,13 +297,15 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_object_fields",
-            description="Retrieves field Names, labels and types for a specific Salesforce object",
+            description="""Retrieves field names and types for a Salesforce object. Use this to discover available fields before writing SOQL queries.
+
+Output is CSV format: name,label,type,updateable""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "object_name": {
                         "type": "string",
-                        "description": "The name of the Salesforce object (e.g., 'Account', 'Contact')",
+                        "description": "The Salesforce object API name (e.g., 'Account', 'Contact', 'Store__c')",
                     },
                 },
                 "required": ["object_name"],
@@ -210,17 +313,23 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_record",
-            description="Retrieves a specific record by ID",
+            description="""Retrieves a specific record by ID. Returns all fields - prefer SOQL with specific fields for token efficiency.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "object_name": {
                         "type": "string",
-                        "description": "The name of the Salesforce object (e.g., 'Account', 'Contact')",
+                        "description": "The Salesforce object API name (e.g., 'Account', 'Contact')",
                     },
                     "record_id": {
                         "type": "string",
-                        "description": "The ID of the record to retrieve",
+                        "description": "The 15 or 18 character Salesforce record ID",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format: 'compact' (default), 'json'",
+                        "enum": ["compact", "json"],
+                        "default": "compact",
                     },
                 },
                 "required": ["object_name", "record_id"],
@@ -378,26 +487,32 @@ async def handle_list_tools() -> list[types.Tool]:
 async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.TextContent]:
     if name == "run_soql_query":
         query = arguments.get("query")
+        format_type = arguments.get("format", "csv")
         if not query:
             raise ValueError("Missing 'query' argument")
 
         results = sf_client.sf.query_all(query)
+        formatted = format_records(results.get('records', []), format_type)
         return [
             types.TextContent(
                 type="text",
-                text=f"SOQL Query Results (JSON):\n{json.dumps(results, indent=2)}",
+                text=formatted,
             )
         ]
     elif name == "run_sosl_search":
         search = arguments.get("search")
+        format_type = arguments.get("format", "csv")
         if not search:
             raise ValueError("Missing 'search' argument")
 
         results = sf_client.sf.search(search)
+        # SOSL returns {'searchRecords': [...]}
+        records = results.get('searchRecords', [])
+        formatted = format_records(records, format_type)
         return [
             types.TextContent(
                 type="text",
-                text=f"SOSL Search Results (JSON):\n{json.dumps(results, indent=2)}",
+                text=formatted,
             )
         ]
     elif name == "get_object_fields":
@@ -410,12 +525,13 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         return [
             types.TextContent(
                 type="text",
-                text=f"{object_name} Metadata (JSON):\n{results}",
+                text=results,
             )
         ]
     elif name == "get_record":
         object_name = arguments.get("object_name")
         record_id = arguments.get("record_id")
+        format_type = arguments.get("format", "compact")
         if not object_name or not record_id:
             raise ValueError("Missing 'object_name' or 'record_id' argument")
         if not sf_client.sf:
@@ -424,10 +540,16 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         if not isinstance(sf_object, SFType):
             raise ValueError(f"Invalid Salesforce object name: {object_name}")
         results = sf_object.get(record_id)
+        # Strip attributes
+        clean = {k: v for k, v in results.items() if k != 'attributes'}
+        if format_type == "json":
+            text = json.dumps(clean, indent=2)
+        else:
+            text = json.dumps(clean, separators=(',', ':'))
         return [
             types.TextContent(
                 type="text",
-                text=f"{object_name} Record (JSON):\n{json.dumps(results, indent=2)}",
+                text=text,
             )
         ]
     elif name == "create_record":
