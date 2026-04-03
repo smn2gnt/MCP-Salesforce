@@ -7,19 +7,18 @@ A Model Context Protocol (MCP) server implementation for Salesforce integration,
 - Execute SOQL (Salesforce Object Query Language) queries
 - Perform SOSL (Salesforce Object Search Language) searches
 - Retrieve metadata for Salesforce objects, including field names, labels, and types
-- **List all available SObjects** - Discover standard and custom objects
+- List all available SObjects - Discover standard and custom objects
 - Retrieve, create, update, and delete records
-- **Bulk operations** - Create, update, and delete up to 10,000 records at once
+- Bulk operations - Create, update, and delete up to 10,000 records at once
 - Execute Tooling API requests
 - Execute Apex REST requests
 - Make direct REST API calls to Salesforce
 
-
 ## Configuration
+
 ### Model Context Protocol
 
 To use this server with the Model Context Protocol, you need to configure it in your `claude_desktop_config.json` file. Add the following entry to the `mcpServers` section:
-
 
     {
         "mcpServers": {
@@ -33,20 +32,12 @@ To use this server with the Model Context Protocol, you need to configure it in 
             "env": {
                 "SALESFORCE_ACCESS_TOKEN": "SALESFORCE_ACCESS_TOKEN",
                 "SALESFORCE_INSTANCE_URL": "SALESFORCE_INSTANCE_URL",
+                "SALESFORCE_DOMAIN": "SALESFORCE_DOMAIN"
                 }
             }
         }
     }
     
-
-
-**Note on Salesforce Authentication Methods**
-
-This server supports two authentication methods:
-
-- **OAuth (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables. 
-- **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`.
-
 ## Available Tools
 
 ### Query and Search Tools
@@ -64,9 +55,9 @@ This server supports two authentication methods:
 - **`delete_record`** - Delete a record
 
 ### Bulk Operations
-- **`bulk_create_records`** - Create up to 10,000 records in a single operation
-- **`bulk_update_records`** - Update up to 10,000 records (must include Id field)
-- **`bulk_delete_records`** - Delete up to 10,000 records using record IDs
+- **`bulk_create_records`** - Create multiple records in a single operation
+- **`bulk_update_records`** - Update multiple records (must include Id field)
+- **`bulk_delete_records`** - Delete multiple records using record IDs
 
 ### Advanced API Tools
 - **`tooling_execute`** - Execute Tooling API requests
@@ -87,3 +78,18 @@ This server supports two authentication methods:
 - For update operations, each record must contain the `Id` field
 - For delete operations, provide an array of record IDs as strings
 - Results include success/failure status for each record in the batch 
+
+**Note on Salesforce Authentication Methods**
+
+This server supports four authentication methods:
+
+- **OAuth (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables. 
+- **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`.
+- **Client Credentials:** Set `SALESFORCE_CLIENT_ID` and `SALESFORCE_CLIENT_SECRET` for OAuth 2.0 Client Credentials flow. This is useful for server-to-server integrations.
+- **Salesforce CLI (Default Org):** If no OAuth env vars are set, the server will try to use the active Salesforce CLI default org from the current workspace (via `sf org display --json` or `sfdx force:org:display --json`). Optionally set `SALESFORCE_CLI_TARGET_ORG` to target a specific org.
+- **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`. 
+
+**Environment Configuration**
+
+- **`SALESFORCE_DOMAIN` (Optional):** Set to `test` to connect to a Salesforce sandbox environment. If not set or left empty, the server will connect to the production environment.
+- **`SALESFORCE_CLI_TARGET_ORG` (Optional):** When using the Salesforce CLI authentication method, set this to target a specific org alias or username instead of the default org.
