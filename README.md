@@ -7,6 +7,7 @@ A Model Context Protocol (MCP) server implementation for Salesforce integration,
 - Execute SOQL (Salesforce Object Query Language) queries
 - Perform SOSL (Salesforce Object Search Language) searches
 - Retrieve metadata for Salesforce objects, including field names, labels, and types
+- List all available SObjects - Discover standard and custom objects
 - Retrieve, create, update, and delete records
 - Execute Tooling API requests
 - Execute Apex REST requests
@@ -36,13 +37,38 @@ To use this server with the Model Context Protocol, you need to configure it in 
         }
     }
     
+## Available Tools
 
+### Query and Search Tools
+- **`run_soql_query`** - Execute SOQL queries against Salesforce
+- **`run_sosl_search`** - Perform SOSL searches across objects
+
+### Metadata Tools  
+- **`get_object_fields`** - Retrieve field metadata for specific objects
+- **`list_sobjects`** - List all available SObjects (standard and custom)
+
+### Single Record Operations
+- **`get_record`** - Retrieve a specific record by ID
+- **`create_record`** - Create a new record
+- **`update_record`** - Update an existing record  
+- **`delete_record`** - Delete a record
+
+### Bulk Operations
+- **`bulk_create_records`** - Create multiple records in a single operation
+- **`bulk_update_records`** - Update multiple records (must include Id field)
+- **`bulk_delete_records`** - Delete multiple records using record IDs
+
+### Advanced API Tools
+- **`tooling_execute`** - Execute Tooling API requests
+- **`apex_execute`** - Execute Apex REST requests
+- **`restful`** - Make direct REST API calls to Salesforce
 
 **Note on Salesforce Authentication Methods**
 
-This server supports three authentication methods:
+This server supports four authentication methods:
 
 - **OAuth (Recommended):** Set `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` as environment variables. 
+- **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`.
 - **Client Credentials:** Set `SALESFORCE_CLIENT_ID` and `SALESFORCE_CLIENT_SECRET` for OAuth 2.0 Client Credentials flow. This is useful for server-to-server integrations.
 - **Salesforce CLI (Default Org):** If no OAuth env vars are set, the server will try to use the active Salesforce CLI default org from the current workspace (via `sf org display --json` or `sfdx force:org:display --json`). Optionally set `SALESFORCE_CLI_TARGET_ORG` to target a specific org.
 - **Username/Password (Legacy):** If `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` are not set, the server will fall back to using `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD`, and `SALESFORCE_SECURITY_TOKEN`. 

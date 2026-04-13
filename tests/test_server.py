@@ -331,3 +331,188 @@ class TestToolHandlers:
 
         with pytest.raises(ValueError, match="Unknown tool"):
             await handle_call_tool('nonexistent_tool', {})
+
+
+class TestBulkOperations:
+    """Tests for bulk_create_records, bulk_update_records, and bulk_delete_records tools."""
+
+    # ------------------------------------------------------------------ #
+    # bulk_create_records                                                  #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_create_records_success(self, mock_client):
+        """bulk_create_records should call bulk.insert and return results."""
+        from src.salesforce.server import handle_call_tool
+
+        mock_bulk_result = [
+            {'id': '001AA', 'success': True, 'errors': []},
+            {'id': '001BB', 'success': True, 'errors': []},
+        ]
+        mock_bulk_op = Mock()
+        mock_bulk_op.insert.return_value = mock_bulk_result
+        mock_client.sf.bulk.Account = mock_bulk_op
+
+        records = [{'Name': 'Alpha Corp'}, {'Name': 'Beta Corp'}]
+        result = await handle_call_tool('bulk_create_records', {
+            'object_name': 'Account',
+            'data': records,
+        })
+
+        mock_bulk_op.insert.assert_called_once_with(records)
+        assert len(result) == 1
+        assert 'Bulk Create Account Results' in result[0].text
+        assert '001AA' in result[0].text
+        assert '001BB' in result[0].text
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_create_records_missing_arguments(self, mock_client):
+        """bulk_create_records should raise ValueError when object_name or data is missing."""
+        from src.salesforce.server import handle_call_tool
+
+        with pytest.raises(ValueError, match="Missing 'object_name' or 'data'"):
+            await handle_call_tool('bulk_create_records', {'object_name': 'Account'})
+
+        with pytest.raises(ValueError, match="Missing 'object_name' or 'data'"):
+            await handle_call_tool('bulk_create_records', {'data': [{'Name': 'X'}]})
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_create_records_data_not_list(self, mock_client):
+        """bulk_create_records should raise ValueError when data is not a list."""
+        from src.salesforce.server import handle_call_tool
+
+        with pytest.raises(ValueError, match="list of records"):
+            await handle_call_tool('bulk_create_records', {
+                'object_name': 'Account',
+                'data': {'Name': 'Not a list'},
+            })
+
+    # ------------------------------------------------------------------ #
+    # bulk_update_records                                                  #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_update_records_success(self, mock_client):
+        """bulk_update_records should call bulk.update and return results."""
+        from src.salesforce.server import handle_call_tool
+
+        mock_bulk_result = [
+            {'id': '001AA', 'success': True, 'errors': []},
+            {'id': '001BB', 'success': True, 'errors': []},
+        ]
+        mock_bulk_op = Mock()
+        mock_bulk_op.update.return_value = mock_bulk_result
+        mock_client.sf.bulk.Account = mock_bulk_op
+
+        records = [
+            {'Id': '001AA', 'Name': 'Alpha Updated'},
+            {'Id': '001BB', 'Name': 'Beta Updated'},
+        ]
+        result = await handle_call_tool('bulk_update_records', {
+            'object_name': 'Account',
+            'data': records,
+        })
+
+        mock_bulk_op.update.assert_called_once_with(records)
+        assert 'Bulk Update Account Results' in result[0].text
+        assert '001AA' in result[0].text
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_update_records_missing_id_field(self, mock_client):
+        """bulk_update_records should raise ValueError when a record lacks an Id field."""
+        from src.salesforce.server import handle_call_tool
+
+        with pytest.raises(ValueError, match="'Id' field"):
+            await handle_call_tool('bulk_update_records', {
+                'object_name': 'Account',
+                'data': [{'Name': 'No ID here'}],
+            })
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_update_records_missing_arguments(self, mock_client):
+        """bulk_update_records should raise ValueError when object_name or data is missing."""
+        from src.salesforce.server import handle_call_tool
+
+        with pytest.raises(ValueError, match="Missing 'object_name' or 'data'"):
+            await handle_call_tool('bulk_update_records', {'object_name': 'Account'})
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_update_records_data_not_list(self, mock_client):
+        """bulk_update_records should raise ValueError when data is not a list."""
+        from src.salesforce.server import handle_call_tool
+
+        with pytest.raises(ValueError, match="list of records"):
+            await handle_call_tool('bulk_update_records', {
+                'object_name': 'Account',
+                'data': {'Id': '001', 'Name': 'Not a list'},
+            })
+
+    # ------------------------------------------------------------------ #
+    # bulk_delete_records                                                  #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_delete_records_success(self, mock_client):
+        """bulk_delete_records should convert IDs to dicts, call bulk.delete, and return results."""
+        from src.salesforce.server import handle_call_tool
+
+        mock_bulk_result = [
+            {'id': '001AA', 'success': True, 'errors': []},
+            {'id': '001BB', 'success': True, 'errors': []},
+        ]
+        mock_bulk_op = Mock()
+        mock_bulk_op.delete.return_value = mock_bulk_result
+        mock_client.sf.bulk.Account = mock_bulk_op
+
+        result = await handle_call_tool('bulk_delete_records', {
+            'object_name': 'Account',
+            'record_ids': ['001AA', '001BB'],
+        })
+
+        mock_bulk_op.delete.assert_called_once_with([{'Id': '001AA'}, {'Id': '001BB'}])
+        assert 'Bulk Delete Account Results' in result[0].text
+        assert '001AA' in result[0].text
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_delete_records_missing_arguments(self, mock_client):
+        """bulk_delete_records should raise ValueError when object_name or record_ids is missing."""
+        from src.salesforce.server import handle_call_tool
+
+        with pytest.raises(ValueError, match="Missing 'object_name' or 'record_ids'"):
+            await handle_call_tool('bulk_delete_records', {'object_name': 'Account'})
+
+        with pytest.raises(ValueError, match="Missing 'object_name' or 'record_ids'"):
+            await handle_call_tool('bulk_delete_records', {'record_ids': ['001AA']})
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_delete_records_not_a_list(self, mock_client):
+        """bulk_delete_records should raise ValueError when record_ids is not a list."""
+        from src.salesforce.server import handle_call_tool
+
+        with pytest.raises(ValueError, match="list of strings"):
+            await handle_call_tool('bulk_delete_records', {
+                'object_name': 'Account',
+                'record_ids': '001AA',
+            })
+
+    @pytest.mark.asyncio
+    @patch('src.salesforce.server.sf_client')
+    async def test_bulk_delete_records_non_string_id(self, mock_client):
+        """bulk_delete_records should raise ValueError when an ID is not a string."""
+        from src.salesforce.server import handle_call_tool
+
+        with pytest.raises(ValueError, match="string ID"):
+            await handle_call_tool('bulk_delete_records', {
+                'object_name': 'Account',
+                'record_ids': [123, 456],
+            })
