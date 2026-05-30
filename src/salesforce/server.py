@@ -141,37 +141,11 @@ class SalesforceClient:
             print(f"Salesforce connection failed: {str(e)}")
             return False
 
-    def _get_cli_auth(self) -> Optional[dict[str, str]]:
-        """Retrieves Salesforce authentication from the Salesforce CLI.
-
-        This method attempts to use either the `sf` or `sfdx` CLI to obtain
-        the access token and instance URL for a Salesforce org. If the
-        `SALESFORCE_CLI_TARGET_ORG` environment variable is set, its value
-        is used to select the target org; otherwise, the CLI default org is
-        used.
-
-        Returns:
-            Optional[dict[str, str]]: A dictionary containing `access_token`
-            and `instance_url` keys if authentication details can be
-            retrieved, otherwise `None`.
-        """
-        target_org = os.getenv("SALESFORCE_CLI_TARGET_ORG")
-        sf_cmd = shutil.which("sf")
-        sfdx_cmd = shutil.which("sfdx")
-
-        if sf_cmd:
-            cmd = [sf_cmd, "org", "display", "--json"]
-            if target_org:
-                cmd.extend(["--target-org", target_org])
-        elif sfdx_cmd:
-            cmd = [sfdx_cmd, "force:org:display", "--json"]
-            if target_org:
-                cmd.extend(["--targetusername", target_org])
-        else:
-            return None
-
+    def _run_cli_json(self, cmd: list[str]) -> Optional[Any]:
+        """Runs a Salesforce CLI command with --json and returns the parsed
+        `result` value, or None if the command fails."""
         try:
-            result = subprocess.run(
+            proc = subprocess.run(
                 cmd,
                 check=True,
                 stdout=subprocess.PIPE,
@@ -179,16 +153,81 @@ class SalesforceClient:
                 text=True,
                 timeout=30,
             )
-            payload = json.loads(result.stdout)
-            auth = payload.get("result", {})
-            access_token = auth.get("accessToken")
-            instance_url = auth.get("instanceUrl")
+            return json.loads(proc.stdout).get("result")
+        except subprocess.TimeoutExpired as e:
+            print(f"Salesforce CLI command timed out: {str(e)}")
+        except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+            print(f"Salesforce CLI command failed: {str(e)}")
+        return None
+
+    @staticmethod
+    def _extract_access_token(result: Any) -> Optional[str]:
+        """Pulls the access token out of `org auth show-access-token --json`.
+
+        The command may return the token as a bare string or as an object,
+        so both shapes are handled."""
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            return (
+                result.get("accessToken")
+                or result.get("token")
+                or result.get("access_token")
+            )
+        return None
+
+    def _get_cli_auth(self) -> Optional[dict[str, str]]:
+        """Retrieves Salesforce authentication from the Salesforce CLI.
+
+        Uses either the `sf` or `sfdx` CLI to obtain the access token and
+        instance URL for a Salesforce org. If `SALESFORCE_CLI_TARGET_ORG` is
+        set, its value selects the target org; otherwise the CLI default org
+        is used.
+
+        As of the May 2026 Salesforce CLI security change, `org display` no
+        longer returns the access token (it is redacted). The token is now
+        retrieved from the dedicated `org auth show-access-token` command,
+        while the instance URL still comes from `org display`.
+
+        Returns:
+            Optional[dict[str, str]]: A dictionary with `access_token` and
+            `instance_url` keys, or `None` if they can't be retrieved.
+        """
+        target_org = os.getenv("SALESFORCE_CLI_TARGET_ORG")
+        sf_cmd = shutil.which("sf")
+        sfdx_cmd = shutil.which("sfdx")
+
+        if sf_cmd:
+            display_cmd = [sf_cmd, "org", "display", "--json"]
+            token_cmd = [sf_cmd, "org", "auth", "show-access-token", "--json"]
+            if target_org:
+                display_cmd.extend(["--target-org", target_org])
+                token_cmd.extend(["--target-org", target_org])
+
+            display = self._run_cli_json(display_cmd) or {}
+            instance_url = display.get("instanceUrl")
+            access_token = self._extract_access_token(self._run_cli_json(token_cmd))
+
+            # Older CLIs (pre-dating `org auth show-access-token`) still return
+            # a usable token from `org display`; fall back to it. On updated
+            # CLIs the field is absent (redacted), so this is a no-op there.
+            if not access_token:
+                fallback = display.get("accessToken")
+                if fallback and "REDACTED" not in fallback:
+                    access_token = fallback
+
             if access_token and instance_url:
                 return {"access_token": access_token, "instance_url": instance_url}
-        except subprocess.TimeoutExpired as e:
-            print(f"Salesforce CLI auth lookup timed out: {str(e)}")
-        except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
-            print(f"Salesforce CLI auth lookup failed: {str(e)}")
+
+        elif sfdx_cmd:
+            cmd = [sfdx_cmd, "force:org:display", "--json"]
+            if target_org:
+                cmd.extend(["--targetusername", target_org])
+            result = self._run_cli_json(cmd) or {}
+            access_token = result.get("accessToken")
+            instance_url = result.get("instanceUrl")
+            if access_token and instance_url:
+                return {"access_token": access_token, "instance_url": instance_url}
 
         return None
     
