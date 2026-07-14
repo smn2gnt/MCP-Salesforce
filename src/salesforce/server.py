@@ -13,6 +13,7 @@ from typing import Any, Optional
 import os
 import shutil
 import subprocess
+from collections import OrderedDict
 from dotenv import load_dotenv
 from simple_salesforce import Salesforce
 from simple_salesforce.exceptions import SalesforceError
@@ -76,70 +77,90 @@ def format_records(records: list[dict], format_type: str = "csv", include_total:
     return total_line + output.getvalue()
 
 
+class LRUCache:
+    def __init__(self, capacity: int):
+        self.cache = OrderedDict()
+        self.capacity = capacity
+
+    def get(self, key):
+        if key not in self.cache:
+            return None
+        self.cache.move_to_end(key)
+        return self.cache[key]
+
+    def put(self, key, value):
+        self.cache[key] = value
+        self.cache.move_to_end(key)
+        if len(self.cache) > self.capacity:
+            self.cache.popitem(last=False)
+
+    def __contains__(self, key):
+        return key in self.cache
+
+
 class SalesforceClient:
     """Handles Salesforce operations and caching."""
     
     def __init__(self):
-        self.sf: Optional[Salesforce] = None
-        self.sobjects_cache: dict[str, Any] = {}
+        # LRU Cache for connections (max 50 domains)
+        self.clients_cache = LRUCache(50)
+        # LRU Cache for object metadata (max 50 domains)
+        self.sobjects_cache = LRUCache(50)
 
-    def connect(self) -> bool:
-        """Establishes connection to Salesforce using environment variables.
-
-        Supports four authentication methods (checked in order):
-        1. OAuth Access Token: SALESFORCE_ACCESS_TOKEN + SALESFORCE_INSTANCE_URL
-        2. Client Credentials: SALESFORCE_CLIENT_ID + SALESFORCE_CLIENT_SECRET
-        3. Salesforce CLI Authentication (using an existing Salesforce CLI org)
-        4. Username/Password (Legacy): SALESFORCE_USERNAME + SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN
-
-        Returns:
-            bool: True if connection successful, False otherwise
-        """
+    def get_client(self, target_domain: Optional[str] = None) -> Salesforce:
+        """Gets or creates a Salesforce client for the given domain."""
+        domain = target_domain or os.getenv('SALESFORCE_DOMAIN') or 'login'
+        
+        cached_client = self.clients_cache.get(domain)
+        if cached_client:
+            return cached_client
+            
         try:
-            domain = os.getenv('SALESFORCE_DOMAIN') or 'login'
-
+            sf = None
             # Method 1: OAuth Access Token
             access_token = os.getenv('SALESFORCE_ACCESS_TOKEN')
             instance_url = os.getenv('SALESFORCE_INSTANCE_URL')
             if access_token and instance_url:
-                self.sf = Salesforce(
+                sf = Salesforce(
                     instance_url=instance_url,
                     session_id=access_token,
                     domain=domain
                 )
-                return True
 
             # Method 2: Client Credentials (OAuth 2.0 Client Credentials Flow)
-            client_id = os.getenv('SALESFORCE_CLIENT_ID')
-            client_secret = os.getenv('SALESFORCE_CLIENT_SECRET')
-            if client_id and client_secret:
-                self.sf = Salesforce(
-                    consumer_key=client_id,
-                    consumer_secret=client_secret,
-                    domain=domain
-                )
-                return True
+            if not sf:
+                client_id = os.getenv('SALESFORCE_CLIENT_ID')
+                client_secret = os.getenv('SALESFORCE_CLIENT_SECRET')
+                if client_id and client_secret:
+                    sf = Salesforce(
+                        consumer_key=client_id,
+                        consumer_secret=client_secret,
+                        domain=domain
+                    )
             
             # Method 3: Salesforce CLI Authentication
-            cli_auth = self._get_cli_auth()
-            if cli_auth:
-                self.sf = Salesforce(
-                    instance_url=cli_auth['instance_url'],
-                    session_id=cli_auth['access_token'],
-                )
-                return True
+            if not sf:
+                cli_auth = self._get_cli_auth()
+                if cli_auth:
+                    sf = Salesforce(
+                        instance_url=cli_auth['instance_url'],
+                        session_id=cli_auth['access_token'],
+                    )
 
             # Method 4: Username/Password (Legacy)
-            self.sf = Salesforce(
-                username=os.getenv('SALESFORCE_USERNAME'),
-                password=os.getenv('SALESFORCE_PASSWORD'),
-                security_token=os.getenv('SALESFORCE_SECURITY_TOKEN'),
-                domain=domain
-            )
-            return True
+            if not sf:
+                sf = Salesforce(
+                    username=os.getenv('SALESFORCE_USERNAME'),
+                    password=os.getenv('SALESFORCE_PASSWORD'),
+                    security_token=os.getenv('SALESFORCE_SECURITY_TOKEN'),
+                    domain=domain
+                )
+            
+            self.clients_cache.put(domain, sf)
+            return sf
         except Exception as e:
-            print(f"Salesforce connection failed: {str(e)}")
-            return False
+            print(f"Salesforce connection failed for domain {domain}: {str(e)}")
+            raise ValueError(f"Salesforce connection failed for domain {domain}: {str(e)}")
 
     def _run_cli_json(self, cmd: list[str]) -> Optional[Any]:
         """Runs a Salesforce CLI command with --json and returns the parsed
@@ -231,23 +252,19 @@ class SalesforceClient:
 
         return None
     
-    def get_object_fields(self, object_name: str) -> str:
-        """Retrieves field names and types for a Salesforce object in CSV format.
-
-        Args:
-            object_name (str): The name of the Salesforce object.
-
-        Returns:
-            str: CSV representation of the object fields.
-        """
-        if not self.sf:
-            raise ValueError("Salesforce connection not established.")
-        if object_name not in self.sobjects_cache:
-            sf_object = getattr(self.sf, object_name)
+    def get_object_fields(self, object_name: str, sf: Salesforce, domain: str) -> str:
+        """Retrieves field names and types for a Salesforce object in CSV format."""
+        domain_cache = self.sobjects_cache.get(domain)
+        if domain_cache is None:
+            domain_cache = {}
+            self.sobjects_cache.put(domain, domain_cache)
+            
+        if object_name not in domain_cache:
+            sf_object = getattr(sf, object_name)
             fields = sf_object.describe()['fields']
-            self.sobjects_cache[object_name] = fields
+            domain_cache[object_name] = fields
 
-        fields = self.sobjects_cache[object_name]
+        fields = domain_cache[object_name]
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(['name', 'label', 'type', 'updateable'])
@@ -268,10 +285,6 @@ load_dotenv()
 
 # Configure with Salesforce credentials from environment variables
 sf_client = SalesforceClient()
-if not sf_client.connect():
-    print("Failed to initialize Salesforce connection")
-    # Optionally exit here if Salesforce is required
-    # sys.exit(1)
 
 # Add tool capabilities to run SOQL queries
 @server.list_tools()
@@ -598,13 +611,17 @@ Output is CSV format: name,label,type,updateable""",
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.TextContent]:
+    target_domain = arguments.get("_salesforce_domain")
+    domain_key = target_domain or os.getenv('SALESFORCE_DOMAIN') or 'login'
+    sf = sf_client.get_client(domain_key)
+
     if name == "run_soql_query":
         query = arguments.get("query")
         format_type = arguments.get("format", "csv")
         if not query:
             raise ValueError("Missing 'query' argument")
 
-        results = sf_client.sf.query_all(query)
+        results = sf.query_all(query)
         formatted = format_records(results.get('records', []), format_type)
         return [
             types.TextContent(
@@ -618,7 +635,7 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         if not search:
             raise ValueError("Missing 'search' argument")
 
-        results = sf_client.sf.search(search)
+        results = sf.search(search)
         # SOSL returns {'searchRecords': [...]}
         records = results.get('searchRecords', [])
         formatted = format_records(records, format_type)
@@ -632,9 +649,9 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         object_name = arguments.get("object_name")
         if not object_name:
             raise ValueError("Missing 'object_name' argument")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
-        results = sf_client.get_object_fields(object_name)
+        results = sf_client.get_object_fields(object_name, sf, domain_key)
         return [
             types.TextContent(
                 type="text",
@@ -647,9 +664,9 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         format_type = arguments.get("format", "compact")
         if not object_name or not record_id:
             raise ValueError("Missing 'object_name' or 'record_id' argument")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
-        sf_object = getattr(sf_client.sf, object_name)
+        sf_object = getattr(sf, object_name)
         if not isinstance(sf_object, SFType):
             raise ValueError(f"Invalid Salesforce object name: {object_name}")
         results = sf_object.get(record_id)
@@ -670,9 +687,9 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         data = arguments.get("data")
         if not object_name or not data:
             raise ValueError("Missing 'object_name' or 'data' argument")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
-        sf_object = getattr(sf_client.sf, object_name)
+        sf_object = getattr(sf, object_name)
         results = sf_object.create(data)
         return [
             types.TextContent(
@@ -686,9 +703,9 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         data = arguments.get("data")
         if not object_name or not record_id or not data:
             raise ValueError("Missing 'object_name', 'record_id', or 'data' argument")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
-        sf_object = getattr(sf_client.sf, object_name)
+        sf_object = getattr(sf, object_name)
         results = sf_object.update(record_id, data)
         return [
             types.TextContent(
@@ -701,9 +718,9 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
         record_id = arguments.get("record_id")
         if not object_name or not record_id:
             raise ValueError("Missing 'object_name' or 'record_id' argument")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
-        sf_object = getattr(sf_client.sf, object_name)
+        sf_object = getattr(sf, object_name)
         results = sf_object.delete(record_id)
         return [
             types.TextContent(
@@ -718,10 +735,10 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
 
         if not action:
             raise ValueError("Missing 'action' argument")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
 
-        results = sf_client.sf.toolingexecute(action, method=method, data=data)
+        results = sf.toolingexecute(action, method=method, data=data)
         return [
             types.TextContent(
                 type="text",
@@ -736,10 +753,10 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
 
         if not action:
             raise ValueError("Missing 'action' argument")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
 
-        results = sf_client.sf.apexecute(action, method=method, data=data)
+        results = sf.apexecute(action, method=method, data=data)
         return [
             types.TextContent(
                 type="text",
@@ -754,10 +771,10 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
 
         if not path:
             raise ValueError("Missing 'path' argument")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
 
-        results = sf_client.sf.restful(path, method=method, params=params, json=data)
+        results = sf.restful(path, method=method, params=params, json=data)
         return [
             types.TextContent(
                 type="text",
@@ -765,10 +782,10 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
             )
         ]
     elif name == "list_sobjects":
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
         
-        global_describe = sf_client.sf.describe()
+        global_describe = sf.describe()
         sobject_names = [s['name'] for s in global_describe['sobjects']]
         return [
             types.TextContent(
@@ -782,12 +799,12 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
 
         if not object_name or not records_data:
             raise ValueError("Missing 'object_name' or 'data' argument for bulk_create_records")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
         if not isinstance(records_data, list):
             raise ValueError("'data' argument must be a list of records for bulk_create_records")
 
-        bulk_op = getattr(sf_client.sf.bulk, object_name)
+        bulk_op = getattr(sf.bulk, object_name)
         results = bulk_op.insert(records_data)
 
         return [
@@ -802,7 +819,7 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
 
         if not object_name or not records_data:
             raise ValueError("Missing 'object_name' or 'data' argument for bulk_update_records")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
         if not isinstance(records_data, list):
             raise ValueError("'data' argument must be a list of records for bulk_update_records")
@@ -811,7 +828,7 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
             if not isinstance(record, dict) or 'Id' not in record:
                 raise ValueError("Each record in 'data' must be an object and include an 'Id' field for bulk updates.")
 
-        bulk_op = getattr(sf_client.sf.bulk, object_name)
+        bulk_op = getattr(sf.bulk, object_name)
         results = bulk_op.update(records_data)
 
         return [
@@ -826,7 +843,7 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
 
         if not object_name or not record_ids_to_delete:
             raise ValueError("Missing 'object_name' or 'record_ids' argument for bulk_delete_records")
-        if not sf_client.sf:
+        if not sf:
             raise ValueError("Salesforce connection not established.")
         if not isinstance(record_ids_to_delete, list):
             raise ValueError("'record_ids' argument must be a list of strings for bulk_delete_records")
@@ -837,7 +854,7 @@ async def handle_call_tool(name: str, arguments: dict[str, str]) -> list[types.T
                 raise ValueError("Each item in 'record_ids' must be a string ID.")
             data_to_delete.append({'Id': item})
 
-        bulk_op = getattr(sf_client.sf.bulk, object_name)
+        bulk_op = getattr(sf.bulk, object_name)
         results = bulk_op.delete(data_to_delete)
 
         return [
