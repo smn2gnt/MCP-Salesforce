@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-salesforce-connector"
-version = "0.1.15"
+version = "0.1.16"
 description = "A Model Context Protocol (MCP) server implementation for Salesforce integration"
 readme = "README.md"
 requires-python = ">=3.11"
 keywords = ["mcp", "llm", "salesforce"]
 dependencies = [
-    "mcp",
+    "mcp>=1.0,<2.0",
     "simple-salesforce",
     "python-dotenv",
 ]
