@@ -9,6 +9,7 @@ import asyncio
 import json
 import csv
 import io
+import sys
 from typing import Any, Optional
 import os
 import shutil
@@ -138,7 +139,7 @@ class SalesforceClient:
             )
             return True
         except Exception as e:
-            print(f"Salesforce connection failed: {str(e)}")
+            print(f"Salesforce connection failed: {str(e)}", file=sys.stderr)
             return False
 
     def _run_cli_json(self, cmd: list[str]) -> Optional[Any]:
@@ -155,9 +156,9 @@ class SalesforceClient:
             )
             return json.loads(proc.stdout).get("result")
         except subprocess.TimeoutExpired as e:
-            print(f"Salesforce CLI command timed out: {str(e)}")
+            print(f"Salesforce CLI command timed out: {str(e)}", file=sys.stderr)
         except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
-            print(f"Salesforce CLI command failed: {str(e)}")
+            print(f"Salesforce CLI command failed: {str(e)}", file=sys.stderr)
         return None
 
     @staticmethod
@@ -269,7 +270,7 @@ load_dotenv()
 # Configure with Salesforce credentials from environment variables
 sf_client = SalesforceClient()
 if not sf_client.connect():
-    print("Failed to initialize Salesforce connection")
+    print("Failed to initialize Salesforce connection", file=sys.stderr)
     # Optionally exit here if Salesforce is required
     # sys.exit(1)
 
